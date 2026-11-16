@@ -10,6 +10,14 @@
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Conformance**](docs/conformance.md) · [**Changelog**](CHANGELOG.md)
 
+---
+
+**Web preview** available here:
+
+<a href="https://adisoreq.github.io/formulang-dotnet/">
+  <img src="https://img.shields.io/badge/%E2%96%B6-Run%20Web%20Preview-512BD4?style=for-the-badge&labelColor=2E1A87" alt="Run Web Preview button" />
+</a>
+
 </div>
 
 
