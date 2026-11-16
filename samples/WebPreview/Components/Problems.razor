@@ -1,0 +1,24 @@
+@using FormuLang.NET.Abstractions.Primitives
+
+@* Validation errors, or the error that stopped a stage. *@
+@if (Diagnostics.ValidationErrors.Count > 0 || Error != null)
+{
+    <div class="problems" role="alert">
+        @foreach (IError error in Diagnostics.ValidationErrors)
+        {
+            <p>@error</p>
+        }
+        @if (Diagnostics.ValidationErrors.Count == 0 && Error != null)
+        {
+            <p>@Error</p>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    [Parameter]
+    public IError? Error { get; set; }
+}

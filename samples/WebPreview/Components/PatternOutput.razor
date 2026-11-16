@@ -1,0 +1,62 @@
+@inherits StateComponent
+
+@* Chart with a rectangle around every occurrence, the appearance of the pattern and the occurrences. *@
+<StockChart Candles="State.Candles" Patterns="Rectangles" />
+<Problems Diagnostics="Diagnostics" Error="Run.Error" />
+<div class="legend">
+    <div class="legend-item appearance">
+        <span class="swatch swatch-@Names.Css(Pattern.Color)"></span>
+        <span class="legend-name">
+            @Pattern.Name <span class="pill pill-@Names.Css(Pattern.Type)">@Names.Css(Pattern.Type)</span>
+        </span>
+        <select value="@Names.Css(Pattern.Color)" aria-label="Color of the rectangles"
+                @onchange="e => Set(() => Pattern.Color = Enum.Parse<PatternColor>(e.Value?.ToString() ?? string.Empty, true))">
+            <option value="green">green</option>
+            <option value="red">red</option>
+        </select>
+        <label class="inline">
+            <input type="checkbox" checked="@Pattern.ShowLabel" @onchange="e => Set(() => Pattern.ShowLabel = e.Value is true)" />
+            label <code>@StrategyDraft.Initials(Pattern.Name)</code>
+        </label>
+        <strong>@(Run.Indices.Count)×</strong>
+    </div>
+</div>
+<ol class="occurrences">
+    @foreach (int index in Run.Indices)
+    {
+        <li>
+            <span class="index">#@index</span> @Candles.DateOf(State.Candles, index) · close @(index < State.Candles.Count ? Names.Fixed(State.Candles[index].Close, 2) : "")
+        </li>
+    }
+    @if (Run.Indices.Count == 0)
+    {
+        <li class="muted">No occurrences.</li>
+    }
+</ol>
+
+@code {
+    [Parameter, EditorRequired]
+    public PatternRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    private PatternDraft Pattern => State.SelectedPattern;
+
+    private IReadOnlyList<ChartPattern> Rectangles
+    {
+        get
+        {
+            int length = Pattern.Problems().Count == 0 ? (int)Pattern.Length : 1;
+            string color = Pattern.Color == PatternColor.Green ? Palette.Green : Palette.Red;
+            string label = Pattern.ShowLabel ? StrategyDraft.Initials(Pattern.Name) : "";
+            return Run.Indices.Select(index => new ChartPattern(Math.Max(0, index - length + 1), index, color, label)).ToList();
+        }
+    }
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

@@ -68,3 +68,7 @@ dotnet build FormuLang.NET.sln
 ```bash
 dotnet run --project samples/CalculatorCLI
 ```
+
+```bash
+dotnet run --project samples/WebPreview
+```

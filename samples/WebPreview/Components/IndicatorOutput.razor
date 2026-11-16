@@ -1,0 +1,102 @@
+@inherits StateComponent
+
+@* Chart of the selected indicator, the style of its series and the values of its parameters. *@
+<StockChart Candles="State.Candles" Overlays="Run.Error == null ? Overlays : []" />
+<Problems Diagnostics="Diagnostics" Error="Run.Error" />
+@if (Run.Error != null || Empty)
+{
+    <p class="note">
+        @if (Empty)
+        {
+            <text>The indicator has no value for any candle: every result is null. </text>
+        }
+        An indicator gives <code>null</code>, a Number or an Object of Numbers for every candle.
+        <code>INDICATOR(id)</code> returns the whole series (an Array with a value per candle): take the value of the
+        current candle with <code>[I]</code>, e.g. <code>INDICATOR("SMA")[I]</code>.
+    </p>
+}
+
+<div class="legend">
+    @foreach (SeriesDraft series in Config.Series)
+    {
+        ColorParts fill = Colors.Parse(series.FillColor);
+        bool line = series.FillMode == FillMode.Line;
+        <div class="legend-item editable" title="@series.Description">
+            <label class="color" title="Line color">
+                <input type="color" value="@Colors.Parse(series.LineColor).Hex" aria-label="Line color of @series.Name"
+                       @oninput="e => Set(() => series.LineColor = Text(e))" />
+            </label>
+            <span class="legend-name">
+                @series.Name <code class="muted">@series.Id</code>
+            </span>
+            <select value="@Names.Css(series.FillMode)" aria-label="Fill mode of @series.Name"
+                    @onchange="e => Set(() => series.FillMode = Enum.Parse<FillMode>(Text(e), true))">
+                @foreach (FillMode mode in Enum.GetValues<FillMode>())
+                {
+                    <option value="@Names.Css(mode)">@Names.Css(mode)</option>
+                }
+            </select>
+            <span class="fill @(line ? "disabled" : null)" title="Fill color and opacity">
+                <input type="color" value="@fill.Hex" disabled="@line" aria-label="Fill color of @series.Name"
+                       @oninput="e => Set(() => series.FillColor = Colors.Format(Text(e), Math.Max(fill.Alpha, 0.05)))" />
+                <input type="range" min="0" max="100" value="@Math.Round(fill.Alpha * 100)" disabled="@line" aria-label="Fill opacity of @series.Name"
+                       @oninput="e => Set(() => series.FillColor = Colors.Format(fill.Hex, Names.Parse(e.Value) / 100))" />
+            </span>
+            <strong>@LastValue(series.Id)</strong>
+        </div>
+    }
+</div>
+
+@if (Config.Parameters.Count > 0)
+{
+    <div class="parameter-values">
+        <span class="field-label">Parameter values of the chart</span>
+        <div class="config-row">
+            @foreach (IndicatorParameterDraft parameter in Config.Parameters)
+            {
+                <label class="field">
+                    <span class="field-label">
+                        @parameter.Name <code>@parameter.Id</code>
+                    </span>
+                    <input type="number" value="@Names.Number(parameter.Value)"
+                           @oninput="e => Set(() => parameter.Value = Names.Parse(e.Value))" />
+                    <button type="button" class="link" disabled="@(parameter.Value == parameter.DefaultValue)"
+                            @onclick="() => Set(() => parameter.Value = parameter.DefaultValue)">
+                        default @Names.Number(parameter.DefaultValue)
+                    </button>
+                </label>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IndicatorRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    private IndicatorDraft Config => State.SelectedIndicator;
+
+    private IReadOnlyList<double?> ValuesOf(string id) => Run.Series.GetValueOrDefault(id) ?? [];
+
+    private IReadOnlyList<ChartOverlay> Overlays => Config.Series
+        .Select(s => new ChartOverlay(
+            new ChartSeries(s.Id, s.Name, s.LineColor, s.FillColor, Names.Css(s.FillMode)),
+            ValuesOf(s.Id),
+            Config.Type == IndicatorType.Oscillator ? 1 : 0))
+        .ToList();
+
+    private bool Empty => Run.Error == null && Config.Series.Count > 0 && Config.Series.All(s => ValuesOf(s.Id).All(v => v == null));
+
+    private string LastValue(string id) => ValuesOf(id).LastOrDefault(v => v != null) is double value ? Names.Fixed(value, 2) : "—";
+
+    private static string Text(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

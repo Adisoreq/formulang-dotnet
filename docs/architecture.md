@@ -14,6 +14,7 @@ FormuLang.NET.Abstractions  ◄──  FormuLang.NET.Core  ◄──  FormuLang.
 | `FormuLang.NET.Extensions.Stock` *(planned)* | Abstractions, Core | Implementation of the Stock extension standard (extended types such as `Stock.Candle`, indicator functions). |
 | `FormuLang.NET.Core.Tests` | Core | Conformance tests built from the examples of the standard (xUnit). |
 | `CalculatorCLI` (sample) | Core | Executes formulas from the command line. |
+| `WebPreview` (sample) | Core, Extensions.Stock | Blazor WebAssembly editor that executes formulas of every context type in the browser. |
 
 Every extension standard gets its own `FormuLang.NET.Extensions.<Name>` project, so a host application references only the standards it supports.
 

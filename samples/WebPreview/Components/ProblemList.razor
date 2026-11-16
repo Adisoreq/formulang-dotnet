@@ -1,0 +1,20 @@
+@* Problems of a definition (indicator, pattern, strategy). *@
+@if (Items.Count > 0)
+{
+    <ul class="config-problems" role="alert">
+        @foreach (string problem in Items)
+        {
+            <li>@problem</li>
+        }
+        @ChildContent
+    </ul>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Items { get; set; } = [];
+
+    /// <summary>A note after the problems, shown only with them.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

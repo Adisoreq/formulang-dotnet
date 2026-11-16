@@ -1,0 +1,24 @@
+@inherits StateComponent
+
+@* Stock Context: the chart with the current candle, and the iterations. *@
+<StockChart Candles="State.Candles" Markers="Markers" />
+<IterationsView Run="Run" Diagnostics="Diagnostics" OnSelect="i => current = i" Label="i => Candles.DateOf(State.Candles, i)" />
+
+@code {
+    [Parameter, EditorRequired]
+    public IterationRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    private int current;
+
+    private IReadOnlyList<ChartMarker> Markers
+    {
+        get
+        {
+            int index = Math.Min(current, Math.Max(0, Run.Results.Count - 1));
+            return [new ChartMarker(index, "aboveBar", "circle", "#f2c14e", $"I = {index}")];
+        }
+    }
+}

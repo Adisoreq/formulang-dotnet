@@ -1,0 +1,47 @@
+@* Default Context: the result in a console, the sequences and the variables of the execution. *@
+<div class="console @(Run.Execution.Successful ? null : "failed")">
+    <span class="prompt">result ›</span>
+    <pre>@Run.Execution.ToString()</pre>
+</div>
+@if (Run.Execution.ValidationErrors.Count > 0)
+{
+    <Problems Diagnostics="Diagnostics" />
+}
+<details class="panel" open>
+    <summary>Sequences, parsed and translated</summary>
+    @if (Diagnostics.Sequences.Count > 0)
+    {
+        <ol class="sequences">
+            @foreach (string key in Diagnostics.Sequences)
+            {
+                <li>@key</li>
+            }
+        </ol>
+    }
+    else
+    {
+        <p class="empty">The formula does not parse.</p>
+    }
+</details>
+<details class="panel" open>
+    <summary>Variables of the execution</summary>
+    <table class="variables">
+        <tbody>
+            @foreach (VariableRow row in Run.Variables)
+            {
+                <tr class="@(row.Changed ? "changed" : null)">
+                    <td>@row.Name</td>
+                    <td>@row.Value</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</details>
+
+@code {
+    [Parameter, EditorRequired]
+    public DefaultRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+}

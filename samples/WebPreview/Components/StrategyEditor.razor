@@ -1,0 +1,48 @@
+@inherits StateComponent
+
+@* Definition of the selected strategy, below the formula. *@
+<div class="config indicator-editor">
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Name</span>
+            <input type="text" value="@Strategy.Name" @oninput="e => Set(() => Strategy.Name = e.Value?.ToString() ?? string.Empty)" />
+        </label>
+        <label class="field">
+            <span class="field-label">Confidence</span>
+            <input type="number" step="0.1" min="0" value="@Names.Number(Strategy.Confidence)"
+                   @oninput="e => Set(() => Strategy.Confidence = Names.Parse(e.Value))" />
+        </label>
+        <label class="field">
+            <span class="field-label">Lifetime</span>
+            <input type="number" step="1" min="1" value="@Names.Number(Strategy.Lifetime)"
+                   @oninput="e => Set(() => Strategy.Lifetime = Names.Parse(e.Value))" />
+        </label>
+    </div>
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Description</span>
+            <input type="text" value="@Strategy.Description" @oninput="e => Set(() => Strategy.Description = e.Value?.ToString() ?? string.Empty)" />
+        </label>
+    </div>
+    <p class="config-note">
+        The formula returns a signal from <code>SELL</code> (-1) to <code>BUY</code> (1) for every candle. Confidence
+        (default 1.0) and lifetime (whole number of candles) are the defaults of the definition; the values used by the
+        proposal, the activity and the label are set below the chart.
+    </p>
+    <ProblemList Items="Strategy.Problems()" />
+    <div class="config-actions">
+        <button type="button" class="link" @onclick="() => State.ResetStrategy(Strategy.Id)">
+            restore the definition of the example
+        </button>
+    </div>
+</div>
+
+@code {
+    private StrategyDraft Strategy => State.SelectedStrategy;
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

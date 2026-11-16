@@ -1,0 +1,44 @@
+@inherits StateComponent
+
+@* Panel with one expandable list per standard; the items are its context types. *@
+<nav class="sidebar" aria-label="Context types">
+    @foreach (StandardDefinition standard in Examples.Standards)
+    {
+        bool open = expanded[standard.Id];
+        <section class="standard @(open ? "open" : null)">
+            <button type="button"
+                    class="standard-header"
+                    aria-expanded="@(open ? "true" : "false")"
+                    @onclick="() => expanded[standard.Id] = !expanded[standard.Id]">
+                <span class="chevron" aria-hidden="true">›</span>
+                <span class="standard-name">@standard.Name</span>
+                <code class="standard-id">@standard.Identifier</code>
+            </button>
+            <ul class="contexts" hidden="@(!open)">
+                @foreach (ContextDefinition context in standard.Contexts)
+                {
+                    bool active = State.Context == context.Kind;
+                    <li>
+                        <button type="button"
+                                class="context @(active ? "active" : null)"
+                                aria-current="@(active ? "page" : null)"
+                                @onclick="() => Open(context.Kind)">
+                            <span class="context-name">@context.Name</span>
+                            <span class="context-description">@context.Description</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</nav>
+
+@code {
+    private readonly Dictionary<StandardId, bool> expanded = new() { [StandardId.Core] = true, [StandardId.Stock] = true };
+
+    private void Open(ContextKind kind)
+    {
+        State.Context = kind;
+        State.Notify();
+    }
+}

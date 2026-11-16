@@ -1,0 +1,133 @@
+@inherits StateComponent
+
+@* Chart with the signals of the active strategies, the final proposal and the values of every strategy. *@
+@{
+    // Recomputed from the signals: a change of a weight needs no new execution
+    Proposal result = Engine.ProposalOf(Run.Strategies, WeightsOf, State.Candles.Count);
+    double final = result.Final.Count > 0 ? result.Final[^1] : 0;
+    string verdict = final > 0.05 ? "BUY" : final < -0.05 ? "SELL" : "NEUTRAL";
+}
+<StockChart Candles="State.Candles" Markers="MarkersOf(result)" Histogram="new ChartHistogram(HistogramLabel, result.Final)" />
+<Problems Diagnostics="Diagnostics" Error="SignalsOf(State.Selected[ContextKind.Strategy])?.Error" />
+<div class="proposal proposal-@verdict.ToLowerInvariant()">
+    <span class="proposal-arrow" aria-hidden="true">@(verdict == "BUY" ? "▲" : verdict == "SELL" ? "▼" : "◆")</span>
+    <div>
+        <div class="proposal-label">Final proposal · @Candles.DateOf(State.Candles, State.Candles.Count - 1)</div>
+        <div class="proposal-value">
+            @verdict <span>@(final >= 0 ? "+" : "")@Names.Fixed(final, 2)</span>
+        </div>
+    </div>
+</div>
+<table class="series-table strategies">
+    <thead>
+        <tr>
+            <th>Active</th>
+            <th>Strategy</th>
+            <th>Label</th>
+            <th>Confidence</th>
+            <th>Lifetime</th>
+            <th>Signals</th>
+            <th>Value</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (StrategyDraft s in State.Strategies)
+        {
+            StrategySignals? signals = SignalsOf(s.Id);
+            <tr class="@Names.Classes(s.Runtime.Active ? null : "inactive", s.Id == State.Selected[ContextKind.Strategy] ? "selected" : null)">
+                <td>
+                    <input type="checkbox" checked="@s.Runtime.Active" aria-label="@s.Name active"
+                           @onchange="e => Set(() => s.Runtime.Active = e.Value is true)" />
+                </td>
+                <td>
+                    <button type="button" class="link" @onclick="() => State.Select(ContextKind.Strategy, s.Id)">@s.Name</button>
+                </td>
+                <td>
+                    <input type="text" class="mono label-input" maxlength="6" value="@s.Label" aria-label="Marker label of @s.Name"
+                           @oninput="e => Set(() => s.Label = e.Value?.ToString() ?? string.Empty)" />
+                </td>
+                <td>
+                    <input type="number" step="0.1" min="0" value="@Names.Number(s.Runtime.Confidence)" aria-label="Confidence of @s.Name"
+                           @oninput="e => Set(() => s.Runtime.Confidence = Math.Max(0, OrZero(Names.Parse(e.Value))))" />
+                    @if (s.Runtime.Confidence != s.Confidence)
+                    {
+                        <button type="button" class="link small" @onclick="() => Set(() => s.Runtime.Confidence = s.Confidence)">
+                            default @Names.Number(s.Confidence)
+                        </button>
+                    }
+                </td>
+                <td>
+                    <input type="number" step="1" min="1" value="@Names.Number(s.Runtime.Lifetime)" aria-label="Lifetime of @s.Name"
+                           @oninput="e => Set(() => s.Runtime.Lifetime = Math.Max(1, Math.Floor(OrOne(Names.Parse(e.Value)) + 0.5)))" />
+                    @if (s.Runtime.Lifetime != s.Lifetime)
+                    {
+                        <button type="button" class="link small" @onclick="() => Set(() => s.Runtime.Lifetime = s.Lifetime)">
+                            default @Names.Number(s.Lifetime)
+                        </button>
+                    }
+                </td>
+                <td>@(signals?.Signals.Count(v => v is double d && d != 0) ?? 0)</td>
+                <td>
+                    @if (signals?.Error == null)
+                    {
+                        @Names.Fixed(result.Values.GetValueOrDefault(s.Id)?.Active is { Count: > 0 } active ? active[^1] : 0, 2)
+                    }
+                    else
+                    {
+                        <span class="error-text">@signals.Error.Name</span>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+<p class="config-note">
+    Value of a strategy = its signal (-1 … 1) × confidence, active for <em>lifetime</em> candles. The final proposal
+    is the sum of the values of the active strategies.
+</p>
+
+@code {
+    private const string HistogramLabel = "Proposal";
+
+    [Parameter, EditorRequired]
+    public StrategyRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    private StrategyWeights? WeightsOf(string id)
+        => State.Strategies.FirstOrDefault(s => s.Id == id)?.Runtime is { } w ? new StrategyWeights(w.Active, w.Confidence, w.Lifetime) : null;
+
+    private StrategySignals? SignalsOf(string id) => Run.Strategies.FirstOrDefault(s => s.Id == id);
+
+    private IReadOnlyList<ChartMarker> MarkersOf(Proposal result)
+    {
+        var markers = new List<ChartMarker>();
+        foreach (StrategyDraft s in State.Strategies.Where(s => s.Runtime.Active))
+        {
+            IReadOnlyList<double?> weighted = result.Values.GetValueOrDefault(s.Id)?.Weighted ?? [];
+            for (int index = 0; index < weighted.Count; index++)
+            {
+                if (weighted[index] is not double signal || signal == 0)
+                    continue;
+
+                bool buy = signal > 0;
+                markers.Add(new ChartMarker(index, buy ? "belowBar" : "aboveBar", buy ? "arrowUp" : "arrowDown",
+                    buy ? Palette.Green : Palette.Red, s.Label));
+            }
+        }
+        return markers;
+    }
+
+    /// <summary><c>Number(value) || 0</c> of JavaScript: NaN and 0 give 0.</summary>
+    private static double OrZero(double value) => double.IsNaN(value) ? 0 : value;
+
+    /// <summary><c>Number(value) || 1</c> of JavaScript: NaN and 0 give 1.</summary>
+    private static double OrOne(double value) => double.IsNaN(value) || value == 0 ? 1 : value;
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

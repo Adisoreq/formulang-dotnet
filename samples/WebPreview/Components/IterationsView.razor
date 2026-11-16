@@ -1,0 +1,71 @@
+@using FormuLang.NET.Core.Processing
+
+@* Iteration Context: a slider over the iterations and the result of the chosen one. *@
+<div class="slider">
+    <label for="iteration">
+        Iteration <strong>I = @Shown</strong> <span class="muted">of N = @Run.Count</span>
+    </label>
+    <input id="iteration"
+           type="range"
+           min="0"
+           max="@Last"
+           value="@Shown"
+           disabled="@(Run.Results.Count < 2)"
+           @oninput="e => Select((int)Names.Parse(e.Value))" />
+    @if (Label != null)
+    {
+        <span class="muted">@Label(Shown)</span>
+    }
+</div>
+<div class="console @(Result?.Successful == false ? "failed" : null)">
+    <span class="prompt">I = @Shown ›</span>
+    <pre>@(Result?.ToString() ?? "No iterations.")</pre>
+</div>
+@if (Run.Results.Count < Run.Count && Run.Results.Count > 0)
+{
+    <p class="note">The iterations stopped at I = @(Run.Results.Count - 1): its result is an Error.</p>
+}
+<Problems Diagnostics="Diagnostics" />
+<details class="panel" open>
+    <summary>All iterations</summary>
+    <ol class="iterations" start="0">
+        @for (int i = 0; i < Run.Results.Count; i++)
+        {
+            int index = i;
+            ExecutionResult r = Run.Results[i];
+            <li class="@Names.Classes(index == Shown ? "active" : null, r.Successful ? null : "failed")" @onclick="() => Select(index)">
+                <span class="index">@index</span>
+                <span class="value">@r.ToString()</span>
+            </li>
+        }
+    </ol>
+</details>
+
+@code {
+    [Parameter, EditorRequired]
+    public IterationRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    /// <summary>Called with the index of the shown iteration.</summary>
+    [Parameter]
+    public EventCallback<int> OnSelect { get; set; }
+
+    [Parameter]
+    public Func<int, string>? Label { get; set; }
+
+    private int index;
+
+    private int Last => Math.Max(0, Run.Results.Count - 1);
+
+    private int Shown => Math.Min(index, Last);
+
+    private ExecutionResult? Result => Shown < Run.Results.Count ? Run.Results[Shown] : null;
+
+    private async Task Select(int value)
+    {
+        index = Math.Max(0, value);
+        await OnSelect.InvokeAsync(Shown);
+    }
+}

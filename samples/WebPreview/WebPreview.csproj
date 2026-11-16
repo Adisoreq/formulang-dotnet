@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>WebPreview</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.34" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.34" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FormuLang.NET.Abstractions\FormuLang.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\FormuLang.NET.Core\FormuLang.NET.Core.csproj" />
+    <ProjectReference Include="..\..\src\FormuLang.NET.Extensions.Stock\FormuLang.NET.Extensions.Stock.csproj" />
+  </ItemGroup>
+
+</Project>

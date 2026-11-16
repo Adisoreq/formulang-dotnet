@@ -1,0 +1,49 @@
+@inherits StateComponent
+
+@* Definition of the selected pattern, below the formula. *@
+<div class="config indicator-editor">
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Name</span>
+            <input type="text" value="@Pattern.Name" @oninput="e => Set(() => Pattern.Name = e.Value?.ToString() ?? string.Empty)" />
+        </label>
+        <label class="field">
+            <span class="field-label">Type</span>
+            <select value="@Names.Css(Pattern.Type)" @onchange="e => Set(() => Pattern.Type = Enum.Parse<PatternType>(e.Value?.ToString() ?? string.Empty, true))">
+                <option value="bullish">bullish</option>
+                <option value="bearish">bearish</option>
+            </select>
+        </label>
+        <label class="field">
+            <span class="field-label">Candles</span>
+            <input type="number" min="1" max="@PatternDraft.MaxLength" step="1" value="@Names.Number(Pattern.Length)"
+                   @oninput="e => Set(() => Pattern.Length = Names.Parse(e.Value))" />
+        </label>
+    </div>
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Description</span>
+            <input type="text" value="@Pattern.Description" @oninput="e => Set(() => Pattern.Description = e.Value?.ToString() ?? string.Empty)" />
+        </label>
+    </div>
+    <p class="config-note">
+        The formula returns <code>true</code> for the candle where the pattern ends; its rectangle covers that candle
+        and the @Names.Number(Pattern.Length - 1) before it. The color and the label are set below the chart.
+    </p>
+    <ProblemList Items="Pattern.Problems()" />
+    <div class="config-actions">
+        <button type="button" class="link" @onclick="() => State.ResetPattern(Pattern.Id)">
+            restore the definition of the example
+        </button>
+    </div>
+</div>
+
+@code {
+    private PatternDraft Pattern => State.SelectedPattern;
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

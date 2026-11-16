@@ -40,6 +40,14 @@ dotnet run --project samples/CalculatorCLI -- -f samples/CalculatorCLI/examples/
 
 Without arguments it starts an interactive mode: type a formula (it may have several lines) and press Enter on an empty line to execute it. A formula can also be piped through the standard input. The exit code is `0` on success and `1` when the execution was aborted by an error.
 
+## WebPreview
+
+[WebPreview](../samples/WebPreview) is a Blazor WebAssembly editor that executes formulas of the Core and Stock standards in the browser, in every context type, with a candlestick chart for the Stock contexts.
+
+```bash
+dotnet run --project samples/WebPreview
+```
+
 ## Executing a formula
 
 `Executor` runs the whole [execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/execution.md): validation, clean-up, tokenization, parsing, evaluation and finalization.

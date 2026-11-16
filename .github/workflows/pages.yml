@@ -1,0 +1,61 @@
+# Builds the WebPreview sample (Blazor WebAssembly) and publishes it on GitHub Pages.
+# Requires Settings → Pages → Build and deployment → Source: GitHub Actions.
+name: Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "src/**"
+      - "samples/WebPreview/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a run in progress is not cancelled
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Publish WebPreview
+        run: dotnet publish samples/WebPreview/WebPreview.csproj -c Release -o publish
+
+      # A project site is served from a subdirectory (/formulang-dotnet/): Blazor loads its files relative to <base href>
+      - name: Set the base path
+        run: sed -i 's|<base href="/" />|<base href="${{ steps.pages.outputs.base_path }}/" />|' publish/wwwroot/index.html
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

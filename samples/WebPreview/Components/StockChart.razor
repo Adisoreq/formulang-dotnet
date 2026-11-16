@@ -1,0 +1,87 @@
+@using System.Text.Json
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Candlestick chart (lightweight-charts, wwwroot/js/chart.js) with indicator series, pattern rectangles and strategy markers. *@
+<div class="chart" @ref="container"></div>
+
+@code {
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ChartCandle> Candles { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<ChartOverlay>? Overlays { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ChartPattern>? Patterns { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<ChartMarker>? Markers { get; set; }
+
+    [Parameter]
+    public ChartHistogram? Histogram { get; set; }
+
+    private ElementReference container;
+    private IJSObjectReference? module;
+    private IJSObjectReference? chart;
+
+    // What the chart shows: the data is sent again only when it changed
+    private IReadOnlyList<ChartCandle>? shownCandles;
+    private string? shownOverlays;
+    private string? shownDecorations;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chart.js");
+            chart = await module.InvokeAsync<IJSObjectReference>("create", container);
+        }
+
+        if (chart == null)
+            return;
+
+        string overlays = JsonSerializer.Serialize(new { overlays = Overlays ?? [], histogram = Histogram }, Json);
+        string decorations = JsonSerializer.Serialize(new { markers = Markers ?? [], patterns = Patterns ?? [] }, Json);
+
+        if (!ReferenceEquals(Candles, shownCandles))
+        {
+            // New candles rebuild the whole chart
+            shownCandles = Candles;
+            shownOverlays = shownDecorations = null;
+            await chart.InvokeVoidAsync("setCandles", JsonSerializer.Serialize(Candles, Json));
+        }
+
+        if (overlays != shownOverlays)
+        {
+            shownOverlays = overlays;
+            await chart.InvokeVoidAsync("setOverlays", overlays);
+        }
+
+        if (decorations != shownDecorations)
+        {
+            shownDecorations = decorations;
+            await chart.InvokeVoidAsync("setDecorations", decorations);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (chart != null)
+            {
+                await chart.InvokeVoidAsync("dispose");
+                await chart.DisposeAsync();
+            }
+
+            if (module != null)
+                await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

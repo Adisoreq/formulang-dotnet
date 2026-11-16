@@ -1,0 +1,284 @@
+@using System.Diagnostics
+@using System.Text.Json
+@inherits StateComponent
+
+<div class="app">
+    <header class="topbar">
+        <div class="brand" style="display: flex; align-items: center;">
+            <img class="logo" src="monogram.svg" alt="" width="30" height="30" />
+            <span class="brand-name">FormuLang.NET</span>
+            <span class="brand-tag">preview</span>
+        </div>
+        <div class="topbar-status">
+            <span class="dot @(Succeeded(execution) ? null : "failed")"></span>
+            <span>@(Succeeded(execution) ? "executed" : "failed")</span>
+            <span class="muted">@Names.Fixed(execution.Duration, 1) ms</span>
+            @foreach (string standard in Engine.ReferenceEnvironment.Standards)
+            {
+                <code class="chip">@standard</code>
+            }
+        </div>
+        <div class="topbar-links">
+            <a href="https://github.com/Adisoreq/formulang-dotnet" target="_blank" rel="noopener noreferrer">Source</a>
+            <a href="https://github.com/Adisoreq/FormuLang" target="_blank" rel="noopener noreferrer">Docs</a>
+        </div>
+    </header>
+
+    <Sidebar />
+
+    <main class="workspace">
+        <div class="workspace-head">
+            <div>
+                <h1>@Context.Name</h1>
+                <p class="muted">@Context.Description</p>
+            </div>
+        </div>
+        <div class="examples" role="tablist" aria-label="Examples">
+            @foreach (Example e in ExamplesOfContext)
+            {
+                bool active = e.Id == State.Selected[State.Context];
+                <button type="button"
+                        role="tab"
+                        class="@Names.Classes("example", active ? "active" : null, e.Id == Examples.NewFormula ? "new" : null)"
+                        aria-selected="@(active ? "true" : "false")"
+                        @onclick="() => State.Select(State.Context, e.Id)">
+                    @e.Name
+                </button>
+            }
+        </div>
+        @if (SelectedExample is { } example)
+        {
+            <p class="example-description">
+                @example.Description
+                <button type="button" class="link" @onclick="State.ResetFormula">
+                    @(example.Id == Examples.NewFormula ? "clear" : "reset formula")
+                </button>
+            </p>
+        }
+        <Editor Value="@State.SelectedFormula()"
+                OnChange="value => State.SetFormula(value)"
+                Vocabulary="vocabulary"
+                Suggestions="suggestions" />
+        <p class="hint">
+            <kbd>Tab</kbd>/<kbd>Enter</kbd> inserts a suggestion · <kbd>↑</kbd> <kbd>↓</kbd> choose · <kbd>Esc</kbd> closes
+        </p>
+        @if (State.Context == ContextKind.Iteration)
+        {
+            <div class="config">
+                <label class="field">
+                    <span class="field-label">Iterations (N)</span>
+                    <input type="number" min="1" max="100" value="@State.IterationCount" @oninput="SetIterationCount" />
+                </label>
+            </div>
+        }
+        @switch (State.Context)
+        {
+            case ContextKind.Indicator:
+                <IndicatorEditor />
+                break;
+            case ContextKind.Pattern:
+                <PatternEditor />
+                break;
+            case ContextKind.Strategy:
+                <StrategyEditor />
+                break;
+        }
+    </main>
+
+    <aside class="output" aria-live="polite">
+        @if (StockKinds.Contains(State.Context))
+        {
+            <div class="candles-bar">
+                <span class="muted">@State.Candles.Count candles · seed @State.Seed</span>
+                <label class="inline">
+                    count
+                    <input type="number" min="20" max="500" value="@State.CandleCount" @onchange="SetCandleCount" />
+                </label>
+                <button type="button" class="primary" @onclick="() => State.RegenerateCandles()">Generate candles</button>
+            </div>
+        }
+        @switch (execution.Run)
+        {
+            case DefaultRun run:
+                <ConsoleView Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+            case IterationRun run when execution.Kind == ContextKind.Iteration:
+                <IterationsView Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+            case IterationRun run when execution.Kind == ContextKind.Stock:
+                <StockIterations Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+            case IndicatorRun run:
+                <IndicatorOutput Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+            case PatternRun run:
+                <PatternOutput Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+            case StrategyRun run:
+                <StrategyOutput Run="run" Diagnostics="execution.Diagnostics" />
+                break;
+        }
+    </aside>
+</div>
+
+@code {
+    private static readonly HashSet<ContextKind> StockKinds = [ContextKind.Stock, ContextKind.Indicator, ContextKind.Pattern, ContextKind.Strategy];
+
+    /// <param name="Duration">Duration of the execution in milliseconds.</param>
+    private sealed record Execution(ContextKind Kind, Run Run, Diagnostics Diagnostics, double Duration);
+
+    private Execution execution = default!;
+    private Vocabulary vocabulary = default!;
+    private IReadOnlyList<Suggestion> suggestions = [];
+    private ContextKind? languageContext;
+
+    // What the last execution depends on, and the timer of the next one
+    private string executedKey = "";
+    private IReadOnlyList<ChartCandle>? executedCandles;
+    private CancellationTokenSource? timer;
+
+    private ContextDefinition Context => State.ContextDefinition;
+
+    /// <summary>Indicators, patterns and strategies come from the state: their names can be edited.</summary>
+    private IReadOnlyList<Example> ExamplesOfContext => State.Context switch
+    {
+        ContextKind.Indicator => State.Indicators.Select(i => new Example(i.Id, i.Name, i.Description, "")).ToList(),
+        ContextKind.Pattern => State.Patterns.Select(p => new Example(p.Id, p.Name, p.Description, "")).ToList(),
+        ContextKind.Strategy => State.Strategies.Select(s => new Example(s.Id, s.Name, s.Description, "")).ToList(),
+        _ => Examples.ByContext[State.Context],
+    };
+
+    private Example? SelectedExample => ExamplesOfContext.FirstOrDefault(e => e.Id == State.Selected[State.Context]);
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        UpdateLanguage();
+        executedKey = ExecutionKey();
+        executedCandles = State.Candles;
+        execution = Execute();
+    }
+
+    protected override void OnStateChanged()
+    {
+        UpdateLanguage();
+
+        // Executes the formula 200 ms after the last change of something that it depends on
+        string key = ExecutionKey();
+        if (key == executedKey && ReferenceEquals(State.Candles, executedCandles))
+            return;
+
+        executedKey = key;
+        executedCandles = State.Candles;
+        _ = ExecuteLater();
+    }
+
+    private async Task ExecuteLater()
+    {
+        timer?.Cancel();
+        timer = new CancellationTokenSource();
+        CancellationToken token = timer.Token;
+
+        try
+        {
+            await Task.Delay(200, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        execution = Execute();
+        StateHasChanged();
+    }
+
+    /// <summary>Highlighting and suggestions of the context type.</summary>
+    private void UpdateLanguage()
+    {
+        if (languageContext == State.Context)
+            return;
+
+        languageContext = State.Context;
+        vocabulary = Language.VocabularyOf(Engine.ReferenceEnvironment, Context);
+        suggestions = Language.SuggestionsOf(Engine.ReferenceEnvironment, Context);
+    }
+
+    /// <summary>Everything the execution depends on, except the candles (compared by reference).</summary>
+    private string ExecutionKey() => JsonSerializer.Serialize(new
+    {
+        context = State.Context,
+        selected = State.Selected,
+        formulas = State.Formulas,
+        // Everything of the indicators except the style of the series, which does not need an execution
+        indicators = State.Indicators.Select(i => new
+        {
+            i.Id, i.IndicatorId, i.Name, i.Description, i.SeriesMode, i.Type,
+            parameters = i.Parameters.Select(p => new[] { p.Id, p.Name, Names.Number(p.DefaultValue), Names.Number(p.Value) }),
+            series = i.Series.Select(s => new[] { s.Id, s.Name }),
+        }),
+        iterationCount = State.IterationCount,
+    });
+
+    /// <summary>Executes the formula of the selected example in its context type.</summary>
+    private Execution Execute()
+    {
+        ContextKind kind = State.Context;
+        string formula = State.SelectedFormula(kind);
+        var indicators = State.Indicators
+            .Select(config => new IndicatorSetup(config, State.FormulaOf(ContextKind.Indicator, config.Id)))
+            .ToList();
+        var environment = Engine.CreateEnvironment(indicators);
+
+        var watch = Stopwatch.StartNew();
+        Run run = kind switch
+        {
+            ContextKind.Default => Engine.RunDefault(formula, environment),
+            ContextKind.Iteration => Engine.RunIterations(formula, State.IterationCount, environment),
+            ContextKind.Stock => Engine.RunStock(formula, State.Candles, environment),
+            ContextKind.Indicator => Engine.RunIndicator(indicators.First(i => i.Config.Id == State.Selected[ContextKind.Indicator]), State.Candles, environment),
+            ContextKind.Pattern => Engine.RunPattern(formula, State.Candles, environment),
+            ContextKind.Strategy => Engine.RunStrategies(
+                State.Strategies.Select(s => new StrategySetup(s.Id, State.FormulaOf(ContextKind.Strategy, s.Id))).ToList(),
+                State.Candles,
+                environment),
+            _ => throw new InvalidOperationException($"Unknown context type {kind}."),
+        };
+        watch.Stop();
+
+        return new Execution(kind, run, Engine.Diagnose(formula, environment), watch.Elapsed.TotalMilliseconds);
+    }
+
+    private bool Succeeded(Execution execution) => execution.Run switch
+    {
+        DefaultRun run => run.Execution.Successful,
+        IterationRun run => run.Results.Count > 0 && run.Results.All(r => r.Successful),
+        IndicatorRun run => run.Error == null,
+        PatternRun run => run.Error == null,
+        // An inactive strategy does not take part in the proposal, so its error does not count
+        StrategyRun run => run.Strategies.All(s => s.Error == null || State.Strategies.FirstOrDefault(d => d.Id == s.Id)?.Runtime.Active != true),
+        _ => false,
+    };
+
+    /// <summary><c>Math.round(Number(value) || fallback)</c> of JavaScript, clamped.</summary>
+    private static int WholeNumber(object? value, int fallback, int min, int max)
+    {
+        double number = Names.Parse(value);
+        if (double.IsNaN(number) || number == 0)
+            number = fallback;
+        return (int)Math.Clamp(Math.Floor(number + 0.5), min, max);
+    }
+
+    private void SetIterationCount(ChangeEventArgs e)
+    {
+        State.IterationCount = WholeNumber(e.Value, 1, 1, 100);
+        State.Notify();
+    }
+
+    private void SetCandleCount(ChangeEventArgs e) => State.RegenerateCandles(WholeNumber(e.Value, 160, 20, 500));
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        timer?.Cancel();
+    }
+}

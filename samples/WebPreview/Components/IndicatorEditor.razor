@@ -1,0 +1,175 @@
+@inherits StateComponent
+
+@* Definition of the selected indicator, below the formula: name, registry id, mode, parameters and series. *@
+<div class="config indicator-editor">
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Name</span>
+            <input type="text" value="@Config.Name" @oninput="e => Set(() => Config.Name = Text(e))" />
+        </label>
+        <label class="field">
+            <span class="field-label">Registry id</span>
+            <input type="text" class="mono" value="@Config.IndicatorId" @oninput="e => Set(() => Config.IndicatorId = Text(e))" />
+        </label>
+        <label class="field">
+            <span class="field-label">Type</span>
+            <select value="@Names.Css(Config.Type)" @onchange="e => Set(() => Config.Type = Enum.Parse<IndicatorType>(Text(e), true))">
+                <option value="normal">normal – over the candles</option>
+                <option value="oscillator">oscillator – in a separate pane</option>
+            </select>
+        </label>
+    </div>
+    <div class="config-row">
+        <label class="field grow">
+            <span class="field-label">Description</span>
+            <input type="text" value="@Config.Description" @oninput="e => Set(() => Config.Description = Text(e))" />
+        </label>
+        <label class="field">
+            <span class="field-label">Series mode</span>
+            <select value="@Names.Css(Config.SeriesMode)" @onchange="e => Set(() => Config.SeriesMode = Enum.Parse<SeriesMode>(Text(e), true))">
+                <option value="single">single series – a Number per candle</option>
+                <option value="multiple">multiple series – an Object with a Number per series</option>
+            </select>
+        </label>
+    </div>
+    <p class="config-note">
+        Other formulas use it as <code>INDICATOR("@Config.IndicatorId")</code>, with the default values of its
+        parameters.
+    </p>
+
+    <section class="editor-section">
+        <header>
+            <span class="field-label">Parameters</span>
+            <code class="muted">PARAMETERS.&lt;id&gt;</code>
+            <button type="button" class="ghost" @onclick="() => Set(() => Config.Parameters.Add(Config.NewParameter()))">
+                + Add parameter
+            </button>
+        </header>
+        @if (Config.Parameters.Count > 0)
+        {
+            <table class="series-table edit-table">
+                <thead>
+                    <tr>
+                        <th>Id</th>
+                        <th>Name</th>
+                        <th>Default value</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (IndicatorParameterDraft parameter in Config.Parameters)
+                    {
+                        <tr>
+                            <td>
+                                <input type="text" class="mono" value="@parameter.Id" aria-label="Parameter id"
+                                       @oninput="e => Set(() => parameter.Id = Text(e))" />
+                            </td>
+                            <td>
+                                <input type="text" value="@parameter.Name" aria-label="Parameter name"
+                                       @oninput="e => Set(() => parameter.Name = Text(e))" />
+                            </td>
+                            <td>
+                                <input type="number" value="@Names.Number(parameter.DefaultValue)" aria-label="Default value"
+                                       @oninput="e => Set(() => parameter.DefaultValue = Names.Parse(e.Value))" />
+                            </td>
+                            <td>
+                                <button type="button" class="remove" title="Remove the parameter" aria-label="Remove parameter @parameter.Id"
+                                        @onclick="() => Set(() => Config.Parameters.Remove(parameter))">
+                                    ×
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="empty">The indicator has no parameters.</p>
+        }
+    </section>
+
+    <section class="editor-section">
+        <header>
+            <span class="field-label">Series</span>
+            <span class="muted">style and colors are set below the chart</span>
+            <button type="button" class="ghost" @onclick="() => Set(() => Config.Series.Add(Config.NewSeries()))">
+                + Add series
+            </button>
+        </header>
+        @if (Config.Series.Count > 0)
+        {
+            <table class="series-table edit-table">
+                <thead>
+                    <tr>
+                        <th>Id</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (SeriesDraft series in Config.Series)
+                    {
+                        <tr>
+                            <td>
+                                <input type="text" class="mono" value="@series.Id" aria-label="Series id"
+                                       @oninput="e => Set(() => series.Id = Text(e))" />
+                            </td>
+                            <td>
+                                <input type="text" value="@series.Name" aria-label="Series name"
+                                       @oninput="e => Set(() => series.Name = Text(e))" />
+                            </td>
+                            <td>
+                                <input type="text" value="@series.Description" aria-label="Series description"
+                                       @oninput="e => Set(() => series.Description = Text(e))" />
+                            </td>
+                            <td>
+                                <button type="button" class="remove" title="Remove the series" aria-label="Remove series @series.Id"
+                                        @onclick="() => Set(() => Config.Series.Remove(series))">
+                                    ×
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="empty">The indicator has no series.</p>
+        }
+        @if (Config.SeriesMode == SeriesMode.Single && Config.Series.Count > 1)
+        {
+            <p class="config-note">In the single series mode every series draws the same Number.</p>
+        }
+        @if (Config.SeriesMode == SeriesMode.Multiple)
+        {
+            <p class="config-note">
+                The formula returns an Object whose keys are the ids of the series, e.g.
+                <code>{ @string.Join(", ", Config.Series.Select(s => $"{s.Id}: …")) }</code>.
+            </p>
+        }
+    </section>
+
+    <ProblemList Items="Config.Problems(State.Indicators)">
+        <li class="muted">Until they are fixed, the indicator is not in the registry.</li>
+    </ProblemList>
+    <div class="config-actions">
+        <button type="button" class="link" @onclick="() => State.ResetIndicator(Config.Id)">
+            restore the definition of the example
+        </button>
+    </div>
+</div>
+
+@code {
+    private IndicatorDraft Config => State.SelectedIndicator;
+
+    private static string Text(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

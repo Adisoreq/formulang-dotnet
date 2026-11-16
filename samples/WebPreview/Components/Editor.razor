@@ -1,0 +1,266 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@*
+    Formula editor: a textarea over a highlighted copy of its text, with a list of the keywords that contain the
+    word being typed (↑ ↓ to choose, Enter or Tab to insert, Esc to close). wwwroot/js/editor.js handles the caret,
+    the scroll and the keys.
+*@
+<div class="editor">
+    <pre class="editor-layer" @ref="layer" aria-hidden="true">@((MarkupString)(html + "\n"))</pre>
+    <textarea @ref="textarea"
+              class="editor-input"
+              value="@text"
+              spellcheck="false"
+              wrap="off"
+              aria-label="Formula"
+              placeholder="@Placeholder"
+              @oninput="OnInput"
+              @onkeyup="OnKeyUp"
+              @onclick="OnClick"
+              @onblur="OnBlur"></textarea>
+    <div class="editor-mirror" @ref="mirror" aria-hidden="true"></div>
+    @if (matches.Count > 0)
+    {
+        <ul class="suggestions" role="listbox" style="top: @(Names.Number(top))px; left: @(Names.Number(Math.Max(0, left)))px">
+            @for (int i = 0; i < matches.Count; i++)
+            {
+                int index = i;
+                Suggestion item = matches[i];
+                <li role="option"
+                    aria-selected="@(index == selected ? "true" : "false")"
+                    class="@(index == selected ? "active" : null)"
+                    @onmousedown="() => Insert(item)"
+                    @onmousedown:preventDefault
+                    @onmouseenter="() => selected = index">
+                    <span class="kind kind-@Names.Css(item.Kind)">@KindLabels[item.Kind]</span>
+                    <span class="label">@item.Label</span>
+                    <span class="detail" title="@item.Detail">@item.Detail</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private const string Placeholder = "# Write a formula, e.g.\n$x := 2\n$x ^ 10";
+
+    private static readonly Dictionary<SuggestionKind, string> KindLabels = new()
+    {
+        [SuggestionKind.Function] = "fn",
+        [SuggestionKind.Procedure] = "proc",
+        [SuggestionKind.Constant] = "const",
+        [SuggestionKind.Variable] = "$",
+        [SuggestionKind.Environment] = "@",
+        [SuggestionKind.Keyword] = "lit",
+    };
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<string> OnChange { get; set; }
+
+    [Parameter, EditorRequired]
+    public Vocabulary Vocabulary { get; set; } = default!;
+
+    /// <summary>Suggestions of the environment and the context type; the variables of the formula are added by the editor.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Suggestion> Suggestions { get; set; } = [];
+
+    private ElementReference textarea;
+    private ElementReference layer;
+    private ElementReference mirror;
+    private IJSInProcessObjectReference? module;
+    private IJSInProcessObjectReference? connection;
+    private DotNetObjectReference<Editor>? self;
+
+    /// <summary>The text of the textarea: changed by typing before the new value comes back as <see cref="Value"/>.</summary>
+    private string text = "";
+    private string? lastValue;
+    private string html = "";
+    private (string Text, Vocabulary Vocabulary)? highlighted;
+
+    private int caret;
+    private bool open;
+    private int selected;
+    private double top;
+    private double left;
+    private List<Suggestion> matches = [];
+    private int? measuredStart;
+    private int? pendingCaret;
+
+    protected override void OnParametersSet()
+    {
+        if (Value != lastValue)
+        {
+            // Another formula (another example or context type): the suggestions of the previous one are closed
+            lastValue = Value;
+            text = Value;
+            open = false;
+        }
+
+        Refresh();
+    }
+
+    /// <summary>Highlighting and the suggestions of the word before the caret.</summary>
+    private void Refresh()
+    {
+        if (highlighted is not { } h || h.Text != text || h.Vocabulary != Vocabulary)
+        {
+            html = Language.HighlightHtml(text, Vocabulary);
+            highlighted = (text, Vocabulary);
+        }
+
+        matches = open
+            ? Language.Filter(Suggestions.Concat(Language.VariablesOf(text)), Language.WordBefore(text, caret).Word)
+            : [];
+        if (selected >= matches.Count)
+            selected = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSInProcessObjectReference>("import", "./js/editor.js");
+            self = DotNetObjectReference.Create(this);
+            connection = module.Invoke<IJSInProcessObjectReference>("attach", textarea, layer, self);
+        }
+
+        if (module == null)
+            return;
+
+        if (pendingCaret is int position)
+        {
+            pendingCaret = null;
+            module.InvokeVoid("setCaret", textarea, position);
+            module.InvokeVoid("syncScroll", textarea, layer);
+        }
+
+        // Position of the suggestions, measured at the start of the word
+        if (matches.Count == 0)
+        {
+            measuredStart = null;
+            return;
+        }
+
+        int start = Language.WordBefore(text, caret).Start;
+        if (start != measuredStart)
+        {
+            measuredStart = start;
+            var point = module.Invoke<Point>("measure", textarea, mirror, text[..start]);
+            top = point.Top;
+            left = point.Left;
+            StateHasChanged();
+        }
+    }
+
+    private sealed record Point(double Top, double Left);
+
+    private void UpdateCaret()
+    {
+        if (module != null)
+            caret = module.Invoke<int>("caret", textarea);
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        text = e.Value?.ToString() ?? "";
+        lastValue = text;
+        UpdateCaret();
+        selected = 0;
+        open = true;
+        Refresh();
+        await OnChange.InvokeAsync(text);
+    }
+
+    private void OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key.StartsWith("Arrow", StringComparison.Ordinal) && !open)
+        {
+            UpdateCaret();
+            Refresh();
+        }
+    }
+
+    private void OnClick()
+    {
+        UpdateCaret();
+        open = false;
+        Refresh();
+    }
+
+    private async Task OnBlur()
+    {
+        await Task.Delay(120);
+        open = false;
+        Refresh();
+    }
+
+    /// <summary>Keys pressed while the suggestions are open; <c>true</c> if the key was used.</summary>
+    [JSInvokable]
+    public bool HandleKey(string key)
+    {
+        if (matches.Count == 0)
+            return false;
+
+        switch (key)
+        {
+            case "ArrowDown":
+            case "ArrowUp":
+                int step = key == "ArrowDown" ? 1 : -1;
+                selected = (selected + step + matches.Count) % matches.Count;
+                break;
+            case "Enter":
+            case "Tab":
+                Insert(matches[selected]);
+                break;
+            case "Escape":
+                open = false;
+                Refresh();
+                break;
+            default:
+                return false;
+        }
+
+        StateHasChanged();
+        return true;
+    }
+
+    private void Insert(Suggestion item)
+    {
+        int start = Language.WordBefore(text, caret).Start;
+        string after = text[Math.Min(caret, text.Length)..];
+        bool call = item.Kind is SuggestionKind.Function or SuggestionKind.Procedure && !after.StartsWith('(');
+        string inserted = item.Label + (call ? "(" : "");
+
+        text = text[..start] + inserted + after;
+        lastValue = text;
+        caret = start + inserted.Length;
+        pendingCaret = caret;
+        open = false;
+        Refresh();
+        _ = OnChange.InvokeAsync(text);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (connection != null)
+            {
+                await connection.InvokeVoidAsync("detach");
+                await connection.DisposeAsync();
+            }
+
+            if (module != null)
+                await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        self?.Dispose();
+    }
+}
