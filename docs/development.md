@@ -49,7 +49,7 @@ For a change of the library only (refactoring, performance, API), the standard i
 | | Scheme | Example |
 | :-- | :----- | :------ |
 | Standard (Core) | `<name>-<major>.<minor>` | `core-1.0` |
-| Library | [SemVer](https://semver.org) | `1.0.0` |
+| Library | [SemVer](https://semver.org) | `1.0.1` |
 
 The library version is independent of the standard version: a library release can fix bugs without any change of the standard. Every release lists the standards it supports in the [CHANGELOG](../CHANGELOG.md), and `IEnvironment.Standards` reports the same identifiers at runtime.
 
@@ -85,11 +85,11 @@ A release:
 3. Commit, then tag the commit with the version and push the tag:
 
    ```bash
-   git tag v1.0.0
+   git tag v1.0.1
    ```
 
    ```bash
-   git push origin v1.0.0
+   git push origin v1.0.1
    ```
 
 The workflow checks that the tag matches `<Version>`, runs the tests, pushes the packages and their symbols (`.snupkg`) to nuget.org and creates a GitHub release with the packages. A version that is already on nuget.org is skipped; nuget.org does not allow replacing a published version, only unlisting it.

@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes the NuGet packages when a version tag is pushed, e.g. `git tag v1.0.0 && git push origin v1.0.0`.
+# Publishes the NuGet packages when a version tag is pushed, e.g. `git tag v1.0.1 && git push origin v1.0.1`.
 # Requires the repository secret NUGET_API_KEY (an API key of nuget.org with the "Push" scope for FormuLang.NET.*).
 
 on:

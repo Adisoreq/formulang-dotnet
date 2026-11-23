@@ -10,6 +10,15 @@ All notable changes of **FormuLang.NET**. The format is based on [Keep a Changel
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-23
+
+Supported standards: `core-1.0`, `stock-1.0`. The behavior of the library is the same as in `1.0.0`.
+
+### Fixed
+
+- The library did not build with the .NET 10 SDK: `REVERSE` called `array.Reverse()`, which C# 14 binds to the in-place `MemoryExtensions.Reverse(Span<T>)` instead of `Enumerable.Reverse`. It now calls `Enumerable.Reverse` explicitly.
+- `Directory.Build.props` no longer sets `<LangVersion>latest</LangVersion>`, so the C# version follows the target framework (C# 12 for `net8.0`) with any SDK.
+
 ## [1.0.0] - 2026-11-23
 
 First release, published on NuGet as `FormuLang.NET.Abstractions`, `FormuLang.NET.Core` and `FormuLang.NET.Extensions.Stock`. Supported standards: `core-1.0`, `stock-1.0` (see [Conformance](docs/conformance.md), standard revision `Adisoreq/FormuLang@c40e08a`).
