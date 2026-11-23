@@ -8,19 +8,19 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
 {
     /// <summary>
     /// Candles of one chart and the values derived from them, shared by a Stock Context and every child Indicator
-    /// Context created by <c>INDICATOR</c>. Also stores the computed indicator series, which are deterministic
-    /// (docs/standards/stock/functions/INDICATOR.md, "Performance").
+    /// Context created by <c>LOAD_INDICATOR</c> or <c>LOAD_PATTERN</c>. Also stores the computed indicator and pattern series, which are deterministic
+    /// (docs/standards/stock/functions/LOAD_INDICATOR.md, "Performance").
     /// </summary>
     internal sealed class StockSeries
     {
-        private readonly Dictionary<string, IValue> _indicators = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IValue> _stored = new(StringComparer.Ordinal);
         private readonly ConditionalWeakTable<IValue[], string> _sourceKeys = new();
 
         public IReadOnlyList<Candle> Candles { get; }
         public int Count => Candles.Count;
 
         /// <summary>
-        /// Executor of the indicator formulas.
+        /// Executor of the indicator and pattern formulas.
         /// </summary>
         public Executor Executor { get; }
 
@@ -58,9 +58,9 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
                 ? (IValue)Value.Number(d, StringConverter.NumberToString(d))
                 : Value.Null("null")), name);
 
-        public bool TryGetIndicator(string key, out IValue? series) => _indicators.TryGetValue(key, out series);
+        public bool TryGetStored(string key, out IValue? series) => _stored.TryGetValue(key, out series);
 
-        public void StoreIndicator(string key, IValue series) => _indicators[key] = series;
+        public void Store(string key, IValue series) => _stored[key] = series;
 
         /// <summary>
         /// Key of an indicator source: <c>CLOSE</c> itself, or the serialized elements.

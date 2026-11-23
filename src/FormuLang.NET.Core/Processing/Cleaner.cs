@@ -13,6 +13,9 @@ namespace FormuLang.NET.Core.Processing
         protected const char TextDelimiter = '"';
         protected const char EscapeSymbol = '\\';
         protected const char CommentSigil = '#';
+        protected const char ScopedCommentOpening = '<';
+        protected const string ScopedCommentEnd = "#>";
+        private const char NewLine = '\n';
 
         /// <summary>
         /// Part of a line: either a text literal (with its quotation marks) or code outside text literals.
@@ -72,6 +75,72 @@ namespace FormuLang.NET.Core.Processing
                 segments.Add(new Segment(current.ToString(), insideText));
 
             return segments;
+        }
+
+        /// <summary>
+        /// Replaces every scoped comment (<c>&lt;# ... #&gt;</c>) located outside a text literal and outside a line comment
+        /// with one <c>[New line]</c> if it contains a line break, or with one <c>[Space]</c> otherwise
+        /// (docs/semantics/cleanup.md, "Removing comments"). Line comments are left for <see cref="SplitLine"/>.
+        /// A scoped comment that is not closed (reported by the validation) is removed up to the end of the formula.
+        /// </summary>
+        private static string RemoveScopedComments(string formula)
+        {
+            if (!formula.Contains("<#", StringComparison.Ordinal))
+                return formula;
+
+            var result = new StringBuilder(formula.Length);
+            bool insideText = false, insideLineComment = false, escape = false;
+
+            for (int i = 0; i < formula.Length; i++)
+            {
+                char c = formula[i];
+
+                if (c == NewLine)
+                {
+                    insideText = insideLineComment = escape = false;
+                    result.Append(c);
+                    continue;
+                }
+
+                if (insideLineComment)
+                {
+                    result.Append(c);
+                    continue;
+                }
+
+                if (insideText)
+                {
+                    result.Append(c);
+
+                    if (escape)
+                        escape = false;
+                    else if (c == EscapeSymbol)
+                        escape = true;
+                    else if (c == TextDelimiter)
+                        insideText = false;
+
+                    continue;
+                }
+
+                if (c == ScopedCommentOpening && i + 1 < formula.Length && formula[i + 1] == CommentSigil)
+                {
+                    int end = formula.IndexOf(ScopedCommentEnd, i + 2, StringComparison.Ordinal);
+                    int stop = end < 0 ? formula.Length : end + 2;
+
+                    result.Append(formula.IndexOf(NewLine, i, stop - i) >= 0 ? NewLine : ' ');
+                    i = stop - 1;
+                    continue;
+                }
+
+                if (c == CommentSigil)
+                    insideLineComment = true;
+                else if (c == TextDelimiter)
+                    insideText = true;
+
+                result.Append(c);
+            }
+
+            return result.ToString();
         }
 
         private static bool IsCompressibleOperator(char c)
@@ -153,8 +222,8 @@ namespace FormuLang.NET.Core.Processing
                 .Replace("\r\n", "\n")
                 .Replace('\r', '\n');
 
-            // 2. Comments and 3. white spaces, line by line
-            IEnumerable<string> lines = normalized
+            // 2. Comments: scoped comments first, line comments line by line; 3. white spaces
+            IEnumerable<string> lines = RemoveScopedComments(normalized)
                 .Split('\n')
                 .Select(CleanLine)
                 // 4. Line compression

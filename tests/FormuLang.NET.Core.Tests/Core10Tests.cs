@@ -9,11 +9,11 @@ using Env = FormuLang.NET.Core.Structures.Environment;
 namespace FormuLang.NET.Core.Tests
 {
     /// <summary>
-    /// Changes of the Core standard since <c>Adisoreq/FormuLang@6243bf6</c>: new functions, MAP with an index, SEQ,
+    /// Changes of the Core standard since <c>core-0.2</c> (<c>core-1.0</c> contains the work of <c>0.3</c>): new functions, MAP with an index, SEQ,
     /// serialization variables, environment checks and the Iteration Context.
     /// Examples come from the Examples sections of docs/standards/core/functions/*.md.
     /// </summary>
-    public class Core03Tests
+    public class Core10Tests
     {
         private static void AssertResult(string formula, string expected)
         {
@@ -259,6 +259,213 @@ namespace FormuLang.NET.Core.Tests
             var result = Executor.Create().ExecuteIterations("(1", IterationContext.Create(Env.Create(), 5));
             Assert.Single(result.Results);
             Assert.Equal("SYNTAX_ERROR", result.Error.Name);
+        }
+
+        // core-1.0: scoped comments, Unicode texts, FORMAT, time functions, NOW, time_offset and the Time Context
+
+        private const double Monday = 1795431080123; // 2026-11-23 10:51:20.123 UTC
+
+        private static string RunAt(string formula, double now, double timeOffset = 0)
+        {
+            var env = Env.Create();
+            env.SetNow((long)now);
+            env.SetProperty(CoreFunctions.TimeOffsetName, Value.Number(timeOffset, ""));
+            return Executor.Create().Execute(formula, env).Value.ToString()!;
+        }
+
+        [Theory]
+        [InlineData("$a = 14 # line\n$b = <# scoped #> 24\n\n<#\nHey!\nmulti-line\n#>\n\n$a + $b", "38")]
+        [InlineData("ADD(1, <# the second argument #> 2)", "3")]
+        [InlineData("[1<#x#>, 2]", "[1, 2]")]
+        [InlineData("$a = 1 <# this comment\nspans two lines #> $b = 2\n$a + $b", "3")]
+        [InlineData("<# a <# b #> 5", "5")]
+        [InlineData("$x = 1 #> not a closing marker\n$x", "1")]
+        [InlineData("\"<# not a comment #>\"", "<# not a comment #>")]
+        [InlineData("$b = <# ( \" #> 24\n$b", "24")]
+        public void ScopedComments(string formula, string expected) => AssertResult(formula, expected);
+
+        [Fact]
+        public void ScopedComment_NotClosed()
+            => Assert.Equal("[SYNTAX_ERROR (2)] Scoped comment is not closed at line 1, column 8.", Run("$a = 1 <# note"));
+
+        [Theory]
+        [InlineData("$y = <# Scoped comment #> 2", "$y=2")]
+        [InlineData("<#\nMulti-line\ncomment\n#>\n$x ^ $y", "$x^$y")]
+        [InlineData("1<#x#>2", "1 2")]
+        public void ScopedComments_CleanUp(string formula, string expected)
+            => Assert.Equal(expected, Cleaner.CleanUp(formula).Result);
+
+        [Theory]
+        [InlineData("\"Zażółć gęślą jaźń\"", "Zażółć gęślą jaźń")]
+        [InlineData("LEN(\"żółw\")", "4")]
+        [InlineData("LEN(\"a😀b\")", "3")]
+        [InlineData("REVERSE(\"a😀ą\")", "ą😀a")]
+        [InlineData("SUBSTR(\"łódź\", 1, 2)", "ód")]
+        [InlineData("FIND(\"źdźbło\", \"b\")", "3")]
+        [InlineData("SPLIT(\"a😀\", \"\")", "[\"a\", \"😀\"]")]
+        [InlineData("UPPERCASE(\"żółw\")", "ŻÓŁW")]
+        [InlineData("LOWERCASE(\"ĄĘÓ\")", "ąęó")]
+        [InlineData("\"é\" == \"é\"", "false")]
+        [InlineData("1 # komentarz: zażółć", "1")]
+        public void UnicodeTexts(string formula, string expected) => AssertResult(formula, expected);
+
+        [Fact]
+        public void Unicode_IsNotAllowedInIdentifiers()
+            => Assert.Equal("[SYNTAX_ERROR (2)] Invalid symbol \"ó\" at line 1, column 3.", Run("$zółw = 1"));
+
+        [Theory]
+        [InlineData("FORMAT(\"Mam {} jablek i {} gruszek.\", [10, 5])", "Mam 10 jablek i 5 gruszek.")]
+        [InlineData("FORMAT(\"{1} before {0}\", [\"a\", \"b\"])", "b before a")]
+        [InlineData("FORMAT(\"{0}{0}{0}\", [\"ha\"])", "hahaha")]
+        [InlineData("FORMAT(\"Price: {:.2} zł\", [12.5])", "Price: 12.50 zł")]
+        [InlineData("FORMAT(\"{:.0}%\", [99.5])", "100%")]
+        [InlineData("FORMAT(\"Set: {{{}}}\", [7])", "Set: {7}")]
+        [InlineData("FORMAT(\"{} and {}\", [[1, 2], true])", "[1, 2] and true")]
+        [InlineData("FORMAT(\"No placeholders\", [1])", "No placeholders")]
+        [InlineData("FORMAT(\"{} {}\", [1])", "INVALID_INDEX_ERROR")]
+        [InlineData("FORMAT(\"{} {1}\", [1, 2])", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"{:.2}\", [\"text\"])", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"{\", [1])", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"}\", [1])", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"{ 0 }\", [1])", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"{name} ma {age} lat\", { name: \"Ola\", age: 24 })", "Ola ma 24 lat")]
+        [InlineData("FORMAT(\"{x:.1}, {y:.1}\", { x: 1, y: 2.25 })", "1.0, 2.3")]
+        [InlineData("FORMAT(\"{name}\", { })", "INVALID_KEY_ERROR")]
+        [InlineData("FORMAT(\"{}\", { a: 1 })", "OPERATION_ERROR")]
+        [InlineData("FORMAT(\"{}\", [ERROR(\"x\")])", "CUSTOM_ERROR")]
+        public void Format(string formula, string expected) => AssertResult(formula, expected);
+
+        [Fact]
+        public void Format_IndicesFollowArrayIndexing()
+            => Assert.Equal("a-b", Run("@array_indexing = 1\nFORMAT(\"{1}-{2}\", [\"a\", \"b\"])"));
+
+        [Theory]
+        [InlineData("[YEAR(NOW), MONTH(NOW), DAY(NOW), WEEKDAY(NOW)]", "[2026, 11, 23, 1]")]
+        [InlineData("[HOUR(NOW), MINUTE(NOW), SECOND(NOW), MILLISECOND(NOW)]", "[10, 51, 20, 123]")]
+        [InlineData("[YEAR(0), MONTH(0), DAY(0), WEEKDAY(0)]", "[1970, 1, 1, 4]")]
+        [InlineData("[YEAR(-1), MONTH(-1), DAY(-1), HOUR(-1), MILLISECOND(-1), WEEKDAY(-1)]", "[1969, 12, 31, 23, 999, 3]")]
+        [InlineData("YEAR(1.5)", "OPERATION_ERROR")]
+        [InlineData("YEAR(1e20)", "OPERATION_ERROR")]
+        [InlineData("DATE(1970, 1, 1)", "0")]
+        [InlineData("DATE(2026, 11, 23)", "1795392000000")]
+        [InlineData("DATE(2026, 11, 23, 10, 51, 20, 123)", "1795431080123")]
+        [InlineData("DATE(2024, 2, 29)", "1709164800000")]
+        [InlineData("DATE(2023, 2, 29)", "OPERATION_ERROR")]
+        [InlineData("DATE(2026, 13, 1)", "OPERATION_ERROR")]
+        [InlineData("DATE(2026, 1, 1.5)", "OPERATION_ERROR")]
+        [InlineData("DATE(YEAR(NOW), MONTH(NOW), DAY(NOW), HOUR(NOW), MINUTE(NOW), SECOND(NOW), MILLISECOND(NOW)) == NOW", "true")]
+        [InlineData("FORMAT_TIME(NOW, \"YYYY-MM-DD[T]hh:mm:ss.iii\")", "2026-11-23T10:51:20.123")]
+        [InlineData("FORMAT_TIME(NOW, \"DD/MM/YYYY, hh:mm\")", "23/11/2026, 10:51")]
+        [InlineData("FORMAT_TIME(NOW, \"YYYY-MM-DDThh:mm\")", "2026-11-23T10:51")]
+        [InlineData("FORMAT_TIME(0, \"[Year] YYYY\")", "Year 1970")]
+        [InlineData("FORMAT_TIME(0, \"Y-M-D\")", "Y-M-D")]
+        [InlineData("FORMAT_TIME(0, \"[[YYYY]]\")", "[1970]")]
+        [InlineData("FORMAT_TIME(0, \"[YYYY\")", "OPERATION_ERROR")]
+        [InlineData("$a = NOW\n$a == NOW", "true")]
+        public void TimeFunctions(string formula, string expected)
+        {
+            string actual = RunAt(formula, Monday);
+
+            if (expected.EndsWith("_ERROR"))
+                Assert.StartsWith($"[{expected} (", actual);
+            else
+                Assert.Equal(expected, actual);
+        }
+
+        [Theory]
+        [InlineData("[MONTH(1709249400000), DAY(1709249400000), HOUR(1709249400000), WEEKDAY(1709249400000)]", "[3, 1, 0, 5]")]
+        [InlineData("DATE(2026, 11, 23, 10, 51, 20, 123)", "1795427480123")]
+        [InlineData("FORMAT_TIME(1795431080123, \"hh:mm\")", "11:51")]
+        public void TimeFunctions_UseTimeOffset(string formula, string expected)
+            => Assert.Equal(expected, RunAt(formula, Monday, timeOffset: 60));
+
+        [Fact]
+        public void Now_IsReadFromTheClockOncePerExecution()
+        {
+            var env = Env.Create();
+            Assert.NotNull(env.TimeProvider);
+
+            double before = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            ExecutionResult result = Executor.Create().Execute("$a = NOW\n[$a == NOW, NOW]", env);
+            double after = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            var values = (Abstractions.Primitives.IValue[])result.Value.Raw!;
+            Assert.Equal(true, values[0].Raw);
+            Assert.InRange((double)values[1].Raw!, before, after);
+        }
+
+        [Theory]
+        [InlineData("NOW", 0.5, "Environment constant \"NOW\" must be a whole number.")]
+        [InlineData(CoreFunctions.TimeOffsetName, 1.5, "Environment variable \"time_offset\" must be a whole number.")]
+        public void Validation_NowAndTimeOffsetAreWholeNumbers(string name, double value, string message)
+        {
+            var env = Env.Create();
+            env.TimeProvider = null;
+
+            if (name == "NOW")
+                env.SetConstant(name, Value.Number(value, ""));
+            else
+                env.SetProperty(name, Value.Number(value, ""));
+
+            Assert.Equal(message, Validator.Validate("1", env).Error.Message);
+        }
+
+        [Fact]
+        public void IterationContext_NowIsTheSameInAllIterations()
+        {
+            var env = Env.Create();
+            env.SetNow(1000);
+
+            var result = Executor.Create().ExecuteIterations("NOW", IterationContext.Create(env, 3));
+            Assert.Equal(["1000", "1000", "1000"], result.Values.Select(v => v.ToString()));
+        }
+
+        [Fact]
+        public void TimeContext_Constants()
+        {
+            var runner = Executor.Create().CreateFrameRunner("[FRAME, TIME_S, TIME_MS, DTIME_S, DTIME_MS]", TimeContext.Create(Env.Create()));
+
+            Assert.Equal("[0, 0, 0, 0, 0]", runner.NextFrame(0).Value.ToString());
+            Assert.Equal("[1, 0.5, 500, 0.5, 500]", runner.NextFrame(0.5).Value.ToString());
+            Assert.Equal("[2, 1.25, 1250, 0.75, 750]", runner.NextFrame(1.25).Value.ToString());
+        }
+
+        [Fact]
+        public void TimeContext_PrevAndVariables()
+        {
+            const string formula = "$speed = 5\n$position = IF(ISNULL(PREV), 0, PREV)\nMIN($position + $speed * DTIME_S, 100)";
+            var result = Executor.Create().ExecuteFrames(formula, TimeContext.Create(Env.Create()),
+                [(0, 0, null), (0.5, 0.5, null), (1, 0.5, null)]);
+
+            Assert.Equal(["0", "2.5", "5"], result.Values.Select(v => v.ToString()));
+        }
+
+        [Fact]
+        public void TimeContext_FrameFollowsArrayIndexingAndNowIsSetForEveryFrame()
+        {
+            var env = Env.Create();
+            env.SetProperty("array_indexing", Value.Number(1, "1"));
+
+            var result = Executor.Create().ExecuteFrames("[FRAME, NOW]", TimeContext.Create(env),
+                [(0, 0, 1000), (0.5, 0.5, 1500)]);
+
+            Assert.Equal(["[1, 1000]", "[2, 1500]"], result.Values.Select(v => v.ToString()));
+        }
+
+        [Fact]
+        public void TimeContext_InvalidFormulaFailsInEveryFrame()
+        {
+            var runner = Executor.Create().CreateFrameRunner("(1", TimeContext.Create(Env.Create()));
+            Assert.NotNull(runner.PreparationError);
+            Assert.Equal("SYNTAX_ERROR", runner.NextFrame(0).Error.Name);
+        }
+
+        [Fact]
+        public void TimeContext_TimeNeverDecreases()
+        {
+            var context = TimeContext.Create(Env.Create());
+            context.BeginFrame(0, 1, 0, null);
+            Assert.Throws<ArgumentOutOfRangeException>(() => context.BeginFrame(1, 0.5, 0, null));
         }
     }
 }

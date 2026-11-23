@@ -34,6 +34,8 @@
     }
 </ol>
 
+<ParameterValues Parameters="Pattern.Parameters" />
+
 @code {
     [Parameter, EditorRequired]
     public PatternRun Run { get; set; } = default!;
@@ -47,7 +49,7 @@
     {
         get
         {
-            int length = Pattern.Problems().Count == 0 ? (int)Pattern.Length : 1;
+            int length = Pattern.Length == Math.Floor(Pattern.Length) && Pattern.Length is >= 1 and <= PatternDraft.MaxLength ? (int)Pattern.Length : 1;
             string color = Pattern.Color == PatternColor.Green ? Palette.Green : Palette.Red;
             string label = Pattern.ShowLabel ? StrategyDraft.Initials(Pattern.Name) : "";
             return Run.Indices.Select(index => new ChartPattern(Math.Max(0, index - length + 1), index, color, label)).ToList();

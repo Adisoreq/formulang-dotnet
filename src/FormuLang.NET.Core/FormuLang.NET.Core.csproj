@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>FormuLang.NET: .NET implementation of the FormuLang formula language (Core standard core-1.0). Validation, clean-up, tokenization, parsing and evaluation of text formulas, with over 90 built-in functions, lambdas, time functions and the Default, Iteration and Time contexts.</Description>
   </PropertyGroup>
 
   <ItemGroup>

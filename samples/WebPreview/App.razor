@@ -105,6 +105,9 @@
             case IterationRun run when execution.Kind == ContextKind.Iteration:
                 <IterationsView Run="run" Diagnostics="execution.Diagnostics" />
                 break;
+            case TimeRun run:
+                <TimeOutput Run="run" Diagnostics="execution.Diagnostics" />
+                break;
             case IterationRun run when execution.Kind == ContextKind.Stock:
                 <StockIterations Run="run" Diagnostics="execution.Diagnostics" />
                 break;
@@ -216,6 +219,12 @@
             parameters = i.Parameters.Select(p => new[] { p.Id, p.Name, Names.Number(p.DefaultValue), Names.Number(p.Value) }),
             series = i.Series.Select(s => new[] { s.Id, s.Name }),
         }),
+        // Patterns are in the registry too; their appearance does not need an execution
+        patterns = State.Patterns.Select(p => new
+        {
+            p.Id, p.PatternId, p.Name, p.Length,
+            parameters = p.Parameters.Select(q => new[] { q.Id, q.Name, Names.Number(q.DefaultValue), Names.Number(q.Value) }),
+        }),
         iterationCount = State.IterationCount,
     });
 
@@ -227,16 +236,20 @@
         var indicators = State.Indicators
             .Select(config => new IndicatorSetup(config, State.FormulaOf(ContextKind.Indicator, config.Id)))
             .ToList();
-        var environment = Engine.CreateEnvironment(indicators);
+        var patterns = State.Patterns
+            .Select(config => new PatternSetup(config, State.FormulaOf(ContextKind.Pattern, config.Id)))
+            .ToList();
+        var environment = Engine.CreateEnvironment(indicators, patterns);
 
         var watch = Stopwatch.StartNew();
         Run run = kind switch
         {
             ContextKind.Default => Engine.RunDefault(formula, environment),
             ContextKind.Iteration => Engine.RunIterations(formula, State.IterationCount, environment),
+            ContextKind.Time => Engine.RunTime(formula, environment),
             ContextKind.Stock => Engine.RunStock(formula, State.Candles, environment),
             ContextKind.Indicator => Engine.RunIndicator(indicators.First(i => i.Config.Id == State.Selected[ContextKind.Indicator]), State.Candles, environment),
-            ContextKind.Pattern => Engine.RunPattern(formula, State.Candles, environment),
+            ContextKind.Pattern => Engine.RunPattern(patterns.First(p => p.Config.Id == State.Selected[ContextKind.Pattern]), State.Candles, environment),
             ContextKind.Strategy => Engine.RunStrategies(
                 State.Strategies.Select(s => new StrategySetup(s.Id, State.FormulaOf(ContextKind.Strategy, s.Id))).ToList(),
                 State.Candles,
@@ -254,6 +267,7 @@
         IterationRun run => run.Results.Count > 0 && run.Results.All(r => r.Successful),
         IndicatorRun run => run.Error == null,
         PatternRun run => run.Error == null,
+        TimeRun run => !run.Session.Failed,
         // An inactive strategy does not take part in the proposal, so its error does not count
         StrategyRun run => run.Strategies.All(s => s.Error == null || State.Strategies.FirstOrDefault(d => d.Id == s.Id)?.Runtime.Active != true),
         _ => false,

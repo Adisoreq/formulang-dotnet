@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FormuLang.NET.Abstractions\FormuLang.NET.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\FormuLang.NET.Core\FormuLang.NET.Core.csproj" />
+    <ProjectReference Include="..\..\src\FormuLang.NET.Extensions.Stock\FormuLang.NET.Extensions.Stock.csproj" />
   </ItemGroup>
 
 </Project>

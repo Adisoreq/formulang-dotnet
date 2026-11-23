@@ -11,9 +11,10 @@ FormuLang.NET.Abstractions  ◄──  FormuLang.NET.Core  ◄──  FormuLang.
 | :------ | :--------- | :------------- |
 | `FormuLang.NET.Abstractions` | - | Contracts shared by every module. A host application or an extension can depend only on this project. |
 | `FormuLang.NET.Core` | Abstractions | Implementation of the [Core standard](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md) and of the execution pipeline. |
-| `FormuLang.NET.Extensions.Stock` *(planned)* | Abstractions, Core | Implementation of the Stock extension standard (extended types such as `Stock.Candle`, indicator functions). |
-| `FormuLang.NET.Core.Tests` | Core | Conformance tests built from the examples of the standard (xUnit). |
-| `CalculatorCLI` (sample) | Core | Executes formulas from the command line. |
+| `FormuLang.NET.Extensions.Stock` | Abstractions, Core | Implementation of the Stock extension standard: `Stock.Candle`, the Stock context types, the formula registry, `LOAD_INDICATOR` and `LOAD_PATTERN`. |
+| `FormuLang.NET.Core.Tests`, `FormuLang.NET.Extensions.Stock.Tests` | Core, Extensions.Stock | Tests built from the examples of the standard documents (xUnit). |
+| `FormuLang.NET.Conformance.Tests` | Core, Extensions.Stock | Runner of the language-independent conformance tests of the standard (JSON test cases copied from the standard repository). |
+| `CalculatorCLI` (sample) | Core, Extensions.Stock | Executes formulas from the command line. |
 | `WebPreview` (sample) | Core, Extensions.Stock | Blazor WebAssembly editor that executes formulas of every context type in the browser. |
 
 Every extension standard gets its own `FormuLang.NET.Extensions.<Name>` project, so a host application references only the standards it supports.
@@ -26,7 +27,7 @@ Every extension standard gets its own `FormuLang.NET.Extensions.<Name>` project,
 | `.Functions` | `IFunction`, `ILambda`, `IFunctionOverload`, `IArgumentTemplate`, `IInvokable` | `Function`, `Procedure`, `FunctionOverload`, `ArgumentTemplate` |
 | `.Operators` | `IOperator`, `OperatorType`, `Associativity` | `Operators` (operator table, in the root namespace) |
 | `.Processing` | Stage interfaces (`IValidator`, `ICleaner`, `ITokenizer`, `IParser`, `IEvaluator`), their results, `IToken`, `IExpressionNode`, `ISequence`, `IExecutionResult` | `Executor`, `Validator`, `Cleaner`, `Tokenizer`, `Parser`, `Evaluator`, `Lambda`, expression nodes |
-| `.Structures` | `IEnvironment`, `IContext`, `ContextType`, `IStandard`, `IStandardVersion`, `IAbstractTree<T>` | `Environment`, `Context`, `Standard`, `StandardVersion`, `AbstractTree<T>` |
+| `.Structures` | `IEnvironment`, `IContext`, `ContextType`, `IStandard`, `IStandardVersion`, `IAbstractTree<T>` | `Environment`, `Context`, `IterationContext`, `TimeContext`, `Standard`, `StandardVersion`, `AbstractTree<T>` |
 | `.Standards` | - | `CoreStandard`, `CoreFunctions`, `CoreProcedures` |
 | `.Validation` | - | `IdentifierValidator`, `NumberValidator` |
 | (root) | - | `Errors` (Core error factory), `Operators` |
@@ -72,11 +73,11 @@ Functions receive the `IContext` of the execution, because the environment varia
 
 ### Context types
 
-The host application chooses the context a formula runs in, as in step 1 of [pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md); the formula does not select it. `Context` is the basic Core context. A context type with its own data (e.g. a stock indicator context with `CLOSE`, `N`, `I`) derives from it and overrides `LoadContextData()` (pre-execution step 2, run once per context). The host updates such constants between executions with `SetConstant`, which a formula cannot do. `Executor.Execute(formula, environment)` is only a shortcut for a new basic disposable context.
+The host application chooses the context a formula runs in, as in step 1 of [pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md); the formula does not select it. `Context` is the basic Core context (Default Context); `IterationContext` and `TimeContext` are the other Core context types, run with `Executor.ExecuteIterations` and `Executor.CreateFrameRunner`. The `NOW` constant is stored in the context in pre-execution step 2 (`Context.RefreshNow`), so it does not change during an execution: once per execution in the Default Context, once before the first iteration in the Iteration Context, once per frame in the Time Context. A context type with its own data (e.g. a stock indicator context with `CLOSE`, `N`, `I`) derives from it and overrides `LoadContextData()` (pre-execution step 2, run once per context). The host updates such constants between executions with `SetConstant`, which a formula cannot do. `Executor.Execute(formula, environment)` is only a shortcut for a new basic disposable context.
 
 ## Design rules
 
 - **Errors are values.** Formula errors are returned as `IError` / `Value.Error(...)`, never thrown. Exceptions are reserved for programming errors of the host application (e.g. registering a function twice).
 - **Abstractions first.** A new concept of the standard gets an interface in `Abstractions` before it gets an implementation in `Core`.
 - **One standard, one module.** Code that belongs to an extension standard does not go into `Core`.
-- **Standard identifiers come from the standard.** Error codes and names, operator spellings and binding powers, function signatures and standard identifiers (`core-0.3`) are copied from the standard documents; see [Development](development.md#keeping-the-library-in-sync-with-the-standard).
+- **Standard identifiers come from the standard.** Error codes and names, operator spellings and binding powers, function signatures and standard identifiers (`core-1.0`) are copied from the standard documents; see [Development](development.md#keeping-the-library-in-sync-with-the-standard).

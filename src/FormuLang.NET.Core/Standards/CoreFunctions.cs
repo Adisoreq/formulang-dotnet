@@ -14,7 +14,7 @@ namespace FormuLang.NET.Core.Standards
     /// Built-in functions of the Core standard (docs/standards/core/functions). Each function follows the
     /// <b>Algorithm</b> and <b>Errors</b> sections of its document.
     /// </summary>
-    public static class CoreFunctions
+    public static partial class CoreFunctions
     {
         public static IReadOnlyList<Function> All { get; } = Create();
 
@@ -94,7 +94,8 @@ namespace FormuLang.NET.Core.Standards
                 : T(Txt(a[0]).Replace(Txt(a[1]), Txt(a[2]), StringComparison.Ordinal)), TextArg("text"), TextArg("search"), TextArg("replacement"))),
             Fn("REVERSE",
                 Overload((a, _) => A(Arr(a[0]).Reverse()), ArrayArg("array")),
-                Overload((a, _) => T(new string(Txt(a[0]).Reverse().ToArray())), TextArg("text"))),
+                Overload((a, _) => T(string.Concat(StringUtils.CodePoints(Txt(a[0])).Reverse())), TextArg("text"))),
+            FormatFunction(),
 
             // 5. Arrays and collections
             Fn("ARRAY", Overload((a, _) => A(a), ArgumentTemplate.Any("elements", optional: true, multiple: true))),
@@ -109,7 +110,7 @@ namespace FormuLang.NET.Core.Standards
                 : N(Arr(a[0]).Average(Num)), NumberArrayArg("array"))),
             Fn("LEN",
                 Overload((a, _) => N(Arr(a[0]).Length), ArrayArg("array")),
-                Overload((a, _) => N(Txt(a[0]).Length), TextArg("text"))),
+                Overload((a, _) => N(StringUtils.CodePointLength(Txt(a[0]))), TextArg("text"))),
             Extreme("MAX", (x, y) => x >= y),
             Extreme("MIN", (x, y) => x <= y),
             Fn("RANGE", Overload((a, c) => Range(Arr(a[0]), Num(a[1]), Num(a[2]), c),
@@ -129,7 +130,7 @@ namespace FormuLang.NET.Core.Standards
                 Overload((a, c) => B(TryResolveIndex(Num(a[1]), Arr(a[0]).Length, c, out _, out _)), ArrayArg("array"), NumberArg("index"))),
             Fn("SORT",
                 Overload((a, _) => A(Arr(a[0]).OrderBy(Num)), NumberArrayArg("numbers")),
-                Overload((a, _) => A(Arr(a[0]).OrderBy(Txt, StringComparer.Ordinal)), ArgumentTemplate.ArrayOf("texts", Types.Text)),
+                Overload((a, _) => A(Arr(a[0]).OrderBy(Txt, CodePointComparer)), ArgumentTemplate.ArrayOf("texts", Types.Text)),
                 Overload((a, c) => SortBy(Arr(a[0]), Del(a[1]), c), ArrayArg("elements"), DelegateArg("handler"))),
 
             // 6. Types
@@ -178,6 +179,9 @@ namespace FormuLang.NET.Core.Standards
 
             // 9. Objects
             Fn("KEYS", Overload((a, _) => A(Obj(a[0]).Keys.Select(T)), ObjectArg("object"))),
+
+            // 10. Time
+            .. TimeFunctions(),
 
             // Target of the object literal translation: { k1: a, "k2": b } is OBJECT("k1",a,"k2",b)
             Fn("OBJECT", Overload((a, _) => CreateObject(a), ArgumentTemplate.Any("entries", optional: true, multiple: true))),
@@ -334,8 +338,14 @@ namespace FormuLang.NET.Core.Standards
             return T(string.Join(separator, elements.Select(e => StringConverter.ValueToString(e, options))));
         }
 
-        private static IValue Substring(string text, double start, double? length, IContext context)
+        private static readonly IComparer<string> CodePointComparer = Comparer<string>.Create(StringUtils.CompareCodePoints);
+
+        /// <summary>
+        /// Positions and lengths are counted in characters: Unicode code points.
+        /// </summary>
+        private static IValue Substring(string value, double start, double? length, IContext context)
         {
+            string[] text = StringUtils.CodePoints(value);
             double from = start - ArrayIndexing(context);
 
             if (!IsWhole(from) || from < 0 || from > text.Length)
@@ -349,13 +359,13 @@ namespace FormuLang.NET.Core.Standards
             if (from + count > text.Length)
                 return InvalidIndexError("The part ends after the last character of the text.");
 
-            return T(text.Substring((int)from, (int)count));
+            return T(string.Concat(text.Skip((int)from).Take((int)count)));
         }
 
         private static IValue FindText(string text, string part, IContext context)
         {
             int index = text.IndexOf(part, StringComparison.Ordinal);
-            return index < 0 ? Value.Null() : N(index + ArrayIndexing(context));
+            return index < 0 ? Value.Null() : N(StringUtils.CodePointLength(text[..index]) + ArrayIndexing(context));
         }
 
         private static IValue FindElement(IValue[] array, IValue value, IContext context)
@@ -367,7 +377,7 @@ namespace FormuLang.NET.Core.Standards
         private static IValue Split(string text, string separator)
         {
             IEnumerable<string> parts = separator.Length == 0
-                ? text.Select(c => c.ToString())
+                ? StringUtils.CodePoints(text)
                 : text.Split(separator);
 
             return A(parts.Select(T));
@@ -551,7 +561,7 @@ namespace FormuLang.NET.Core.Standards
 
             IEnumerable<int> order = Enumerable.Range(0, elements.Length);
             order = keys.Length > 0 && keys[0].Type.Base == Types.TextName
-                ? order.OrderBy(i => Txt(keys[i]), StringComparer.Ordinal)
+                ? order.OrderBy(i => Txt(keys[i]), CodePointComparer)
                 : order.OrderBy(i => Num(keys[i]));
 
             return A(order.Select(i => elements[i]));

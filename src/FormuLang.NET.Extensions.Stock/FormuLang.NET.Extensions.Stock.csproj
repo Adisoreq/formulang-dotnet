@@ -1,9 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Stock standard (stock-1.0) of FormuLang.NET: candles, technical indicators, candle patterns and trading strategies written as FormuLang formulas, with a formula registry, LOAD_INDICATOR and LOAD_PATTERN.</Description>
+    <PackageTags>$(PackageTags);stock;trading;indicators;candles;patterns;strategies</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

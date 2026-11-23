@@ -1,0 +1,211 @@
+@using System.Diagnostics
+@using System.Globalization
+@inherits StateComponent
+
+@* Time Context: plays the frames of the formula as time passes; the result of the last frame and a plot of the numbers. *@
+<div class="time-controls">
+    <button type="button" class="primary" disabled="@(Session.PreparationError != null)" @onclick="Toggle">
+        @(playing ? "❚❚ Pause" : "▶ Play")
+    </button>
+    <button type="button" class="ghost" disabled="@(playing || Session.PreparationError != null)" @onclick="Step">Step</button>
+    <button type="button" class="ghost" @onclick="Restart">Reset</button>
+    <label class="inline">
+        fps
+        <input type="number" min="1" max="60" value="@State.FramesPerSecond" @onchange="SetFramesPerSecond" />
+    </label>
+</div>
+
+<dl class="frame-constants">
+    <div><dt>frame #</dt><dd>@(Last is { } f ? Names.Number(f.Frame) : "—")</dd></div>
+    <div><dt>TIME_S</dt><dd>@(Last is { } t ? Names.Fixed(t.TimeSeconds, 3) : "—")</dd></div>
+    <div><dt>DTIME_MS</dt><dd>@(Last is { } d ? Names.Fixed(d.DeltaSeconds * 1000, 1) : "—")</dd></div>
+    <div><dt>frames</dt><dd>@Session.FrameCount</dd></div>
+</dl>
+
+<div class="console @(Failed ? "failed" : null)">
+    <span class="prompt">@(Last is { } frame ? $"frame #{frame.Frame} ›" : "›")</span>
+    <pre>@Output</pre>
+</div>
+@if (Session.Last is { Result.Successful: false } && Session.PreparationError == null)
+{
+    <p class="note">The frames stopped: the last frame results in an Error. Reset to start again.</p>
+}
+<Problems Diagnostics="Diagnostics" />
+
+@if (Plot is { } points)
+{
+    <figure class="time-plot">
+        <svg viewBox="0 0 @PlotWidth @PlotHeight" preserveAspectRatio="none" role="img" aria-label="Numbers returned by the last frames">
+            <polyline points="@points" />
+        </svg>
+        <figcaption>
+            <span class="muted">last @Numbers.Count frames</span>
+            <span class="muted">min @Names.Fixed(Numbers.Min(), 2) · max @Names.Fixed(Numbers.Max(), 2)</span>
+        </figcaption>
+    </figure>
+}
+
+<details class="panel" open>
+    <summary>Last frames</summary>
+    <ol class="iterations">
+        @foreach (FrameRecord record in Session.Frames.Reverse().Take(30))
+        {
+            <li class="@(record.Result.Successful ? null : "failed")">
+                <span class="index">@record.Frame</span>
+                <span class="value">@Names.Fixed(record.TimeSeconds, 2) s · @record.Result.ToString()</span>
+            </li>
+        }
+        @if (Session.Frames.Count == 0)
+        {
+            <li class="muted">No frames yet.</li>
+        }
+    </ol>
+</details>
+
+@code {
+    private const int PlotWidth = 400;
+    private const int PlotHeight = 120;
+
+    [Parameter, EditorRequired]
+    public TimeRun Run { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Diagnostics Diagnostics { get; set; } = default!;
+
+    private TimeSession Session => Run.Session;
+
+    private TimeSession? started;
+    private bool playing;
+    private CancellationTokenSource? loop;
+
+    private FrameRecord? Last => Session.Last;
+
+    private bool Failed => Session.Failed;
+
+    private string Output => Session.PreparationError?.ToString()
+        ?? Last?.Result.ToString()
+        ?? "Press Play to execute the frames.";
+
+    private IReadOnlyList<double> Numbers => Session.Frames
+        .Select(f => f.Result.Successful && f.Result.Value.Raw is double n && double.IsFinite(n) ? n : double.NaN)
+        .Where(n => !double.IsNaN(n))
+        .ToList();
+
+    /// <summary>Points of the polyline when the frames return Numbers; <c>null</c> otherwise.</summary>
+    private string? Plot
+    {
+        get
+        {
+            IReadOnlyList<double> numbers = Numbers;
+            if (numbers.Count < 2)
+                return null;
+
+            double min = numbers.Min(), max = numbers.Max();
+            double range = max - min == 0 ? 1 : max - min;
+            double step = (double)PlotWidth / (TimeSession.HistoryLimit - 1);
+            int offset = TimeSession.HistoryLimit - numbers.Count;
+
+            return string.Join(' ', numbers.Select((n, i) =>
+                string.Create(CultureInfo.InvariantCulture, $"{(offset + i) * step:0.##},{PlotHeight - 4 - (n - min) / range * (PlotHeight - 8):0.##}")));
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // A new formula (or a new environment) gives a new session: start playing it
+        if (ReferenceEquals(started, Session))
+            return;
+
+        started = Session;
+        StopLoop();
+
+        if (Session.PreparationError == null)
+            StartLoop();
+    }
+
+    private void Toggle()
+    {
+        if (playing)
+            StopLoop();
+        else
+            StartLoop();
+    }
+
+    private void Step()
+    {
+        Session.Advance(1.0 / State.FramesPerSecond);
+    }
+
+    private void Restart()
+    {
+        bool wasPlaying = playing || Session.Failed;
+        StopLoop();
+        Session.Reset();
+
+        if (wasPlaying && Session.PreparationError == null)
+            StartLoop();
+    }
+
+    private void StartLoop()
+    {
+        if (Session.Failed && Session.PreparationError == null)
+            Session.Reset();
+
+        loop = new CancellationTokenSource();
+        playing = true;
+        _ = Play(Session, loop.Token);
+    }
+
+    private void StopLoop()
+    {
+        loop?.Cancel();
+        loop = null;
+        playing = false;
+    }
+
+    /// <summary>
+    /// Executes a frame at every tick of the timer. The delta time is measured, so it follows the real time even when a
+    /// frame takes longer than the interval. The frames stop at the first Error.
+    /// </summary>
+    private async Task Play(TimeSession session, CancellationToken token)
+    {
+        var watch = Stopwatch.StartNew();
+        double previous = 0;
+
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                double now = watch.Elapsed.TotalSeconds;
+                session.Advance(now - previous);
+                previous = now;
+
+                if (session.Failed)
+                {
+                    playing = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(TimeSpan.FromSeconds(1.0 / Math.Max(1, State.FramesPerSecond)), token);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private void SetFramesPerSecond(ChangeEventArgs e)
+    {
+        double value = Names.Parse(e.Value);
+        State.FramesPerSecond = double.IsFinite(value) ? (int)Math.Clamp(Math.Round(value), 1, 60) : 20;
+        State.Notify();
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        StopLoop();
+    }
+}

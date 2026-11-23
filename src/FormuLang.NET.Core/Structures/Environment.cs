@@ -1,4 +1,5 @@
 ﻿using FormuLang.NET.Abstractions.Functions;
+using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Abstractions.Structures;
 using FormuLang.NET.Core.Primitives;
 using FormuLang.NET.Core.Utils;
@@ -15,6 +16,18 @@ namespace FormuLang.NET.Core.Structures
         /// Identifier of the implemented Core standard version.
         /// </summary>
         public const string CoreStandard = FormuLang.NET.Core.Standards.CoreStandard.Identifier;
+
+        /// <summary>
+        /// Name of the environment constant with the current time: Unix time in milliseconds, UTC.
+        /// </summary>
+        public const string NowConstant = "NOW";
+
+        /// <summary>
+        /// Clock of the <c>NOW</c> constant. Every pre-execution reads it once (docs/semantics/pre-execution.md), so
+        /// <c>NOW</c> does not change during an execution. <c>null</c>: <c>NOW</c> is the value of the environment
+        /// constant, set by the host application with <see cref="SetNow"/>.
+        /// </summary>
+        public TimeProvider? TimeProvider { get; set; } = TimeProvider.System;
 
         private readonly List<string> _standards = [];
         private readonly List<string> _extendedTypes = [];
@@ -51,6 +64,7 @@ namespace FormuLang.NET.Core.Structures
             env.InitConstant("E", Value.Number(Math.E, "E"));
             env.InitConstant("PI", Value.Number(Math.PI, "PI"));
             env.InitConstant("PHI", Value.Number((1 + Math.Sqrt(5)) / 2, "PHI"));
+            env.InitConstant(NowConstant, NowValue(TimeProvider.System.GetUtcNow().ToUnixTimeMilliseconds()));
 
             // Keyword constants
             env.InitConstant("TRUE", Value.Boolean(true, "TRUE"));
@@ -60,6 +74,7 @@ namespace FormuLang.NET.Core.Structures
             // Variables
             env.InitVariable("array_indexing", Value.Number(0, "0"));
             env.InitVariable("suppress_errors", Value.Boolean(false, "false"));
+            env.InitVariable(FormuLang.NET.Core.Standards.CoreFunctions.TimeOffsetName, Value.Number(0, "0"));
 
             // Serialization variables
             env.InitVariable(SerializationOptions.DecimalPlaceName, Value.Number(-1, "-1"));
@@ -72,6 +87,38 @@ namespace FormuLang.NET.Core.Structures
 
             return env;
         }
+
+        /// <summary>
+        /// Pins the <c>NOW</c> constant to a point in time (Unix time in milliseconds, UTC) and stops reading the clock
+        /// (<see cref="TimeProvider"/> becomes <c>null</c>), e.g. for deterministic tests.
+        /// </summary>
+        public void SetNow(long unixTimeMilliseconds)
+        {
+            TimeProvider = null;
+            SetConstant(NowConstant, NowValue(unixTimeMilliseconds));
+        }
+
+        /// <summary>
+        /// The value of <c>NOW</c> for a new execution: the current time of <see cref="TimeProvider"/>, or the value of
+        /// the <c>NOW</c> constant of the environment. <c>null</c> if the environment has neither.
+        /// </summary>
+        public static IValue? ReadNow(IEnvironment environment)
+        {
+            if (environment is Environment { TimeProvider: TimeProvider clock })
+                return NowValue(clock.GetUtcNow().ToUnixTimeMilliseconds());
+
+            if (environment.HasKey(NowConstant))
+            {
+                var container = environment.GetProperty(NowConstant);
+                if (container.ContainerType == ContainerType.Constant && container.CanAccessValue)
+                    return container.GetValue();
+            }
+
+            return null;
+        }
+
+        internal static IValue NowValue(double unixTimeMilliseconds)
+            => Value.Number(unixTimeMilliseconds, StringConverter.NumberToString(unixTimeMilliseconds));
 
         /// <summary>
         /// Adds a standard: its identifier, extended types and named functions.

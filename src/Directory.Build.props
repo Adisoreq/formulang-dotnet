@@ -1,0 +1,42 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- NuGet packages of the library: FormuLang.NET.Abstractions, FormuLang.NET.Core, FormuLang.NET.Extensions.Stock -->
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>$(MSBuildProjectName)</PackageId>
+    <PackageProjectUrl>https://github.com/Adisoreq/formulang-dotnet</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>formulang;formula;expression;interpreter;evaluator;parser;scripting-language;embedded</PackageTags>
+    <PackageReleaseNotes>https://github.com/Adisoreq/formulang-dotnet/blob/main/CHANGELOG.md</PackageReleaseNotes>
+
+    <!-- XML documentation and symbols -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- SourceLink: the sources of the package are linked to the commit on GitHub -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+    <!-- Public members without an XML comment, or with only some of their parameters documented, do not produce warnings -->
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../raw/images/icons/monogram-128.png" Pack="true" PackagePath="icon.png" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>

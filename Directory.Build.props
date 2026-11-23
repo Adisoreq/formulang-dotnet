@@ -1,0 +1,26 @@
+<Project>
+
+  <!-- Shared by every project of the repository. Packaging settings of the library are in src/Directory.Build.props. -->
+
+  <PropertyGroup>
+    <!-- Library version (SemVer), independent of the versions of the standards (docs/development.md, "Versioning") -->
+    <Version>1.0.0</Version>
+
+    <Authors>Adrian Piznal</Authors>
+    <Copyright>Copyright (c) 2026 Adrian Piznal</Copyright>
+    <RepositoryUrl>https://github.com/Adisoreq/formulang-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+
+    <!-- Only the projects in src/ are packages -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Reproducible builds in CI (GitHub Actions sets GITHUB_ACTIONS=true) -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

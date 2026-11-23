@@ -1,6 +1,7 @@
 ﻿using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Core.Processing;
 using FormuLang.NET.Core.Structures;
+using FormuLang.NET.Extensions.Stock;
 using Environment = FormuLang.NET.Core.Structures.Environment;
 
 namespace CalculatorCLI
@@ -19,13 +20,16 @@ namespace CalculatorCLI
     /// </remarks>
     internal static class Program
     {
-        // A basic Core environment: no constants or variables besides the ones required by the standard
-        private static readonly Environment Environment = Environment.Create();
+        // The Core environment with the Stock standard (CANDLE, IS_BULLISH, IS_BEARISH): no constants or variables
+        // besides the ones required by the standards. NOW is read from the system clock for every execution.
+        private static readonly Environment Environment = CreateEnvironment();
         private static readonly Executor Executor = Executor.Create();
 
         private static int Main(string[] args)
         {
+            // Text literals may contain Unicode characters, e.g. "Zażółć gęślą jaźń"
             Console.OutputEncoding = System.Text.Encoding.UTF8;
+            Console.InputEncoding = System.Text.Encoding.UTF8;
 
             if (args.Length == 2 && args[0] is "-f" or "--file")
             {
@@ -52,6 +56,13 @@ namespace CalculatorCLI
 
             Interactive();
             return 0;
+        }
+
+        private static Environment CreateEnvironment()
+        {
+            var environment = Environment.Create();
+            environment.RegisterStock();
+            return environment;
         }
 
         /// <summary>
@@ -91,7 +102,8 @@ namespace CalculatorCLI
                 if (line == null || (formula.Count == 0 && line.Trim() == "exit"))
                     return;
 
-                if (line.Length > 0)
+                // An empty line inside an unclosed scoped comment (<# ... #>) does not execute the formula
+                if (line.Length > 0 || IsInsideScopedComment(formula))
                 {
                     formula.Add(line);
                     continue;
@@ -105,6 +117,13 @@ namespace CalculatorCLI
             }
         }
 
+        private static bool IsInsideScopedComment(List<string> lines)
+        {
+            string text = string.Join('\n', lines);
+            int open = text.LastIndexOf("<#", StringComparison.Ordinal);
+            return open >= 0 && text.IndexOf("#>", open + 2, StringComparison.Ordinal) < 0;
+        }
+
         private static void WriteError(string message)
         {
             Console.ForegroundColor = ConsoleColor.Red;
@@ -114,8 +133,9 @@ namespace CalculatorCLI
 
         private static void PrintHelp()
         {
-            Console.WriteLine("""
+            Console.WriteLine($"""
                 Executes FormuLang formulas and prints the result.
+                Standards: {string.Join(", ", Environment.Standards)}
 
                 Usage:
                   CalculatorCLI "<formula>"      execute the formula given as an argument
@@ -123,6 +143,7 @@ namespace CalculatorCLI
                   CalculatorCLI < <file>         execute a formula read from the standard input
                   CalculatorCLI                  interactive mode (an empty line executes the formula)
 
+                Comments: # until the end of the line, <# ... #> scoped (may span lines).
                 Exit codes: 0 - success, 1 - the execution was aborted by an error, 2 - invalid usage.
                 """);
         }

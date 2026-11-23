@@ -33,61 +33,11 @@
         </label>
     </div>
     <p class="config-note">
-        Other formulas use it as <code>INDICATOR("@Config.IndicatorId")</code>, with the default values of its
+        Other formulas load it with <code>LOAD_INDICATOR("@Config.IndicatorId")</code>, with the default values of its
         parameters.
     </p>
 
-    <section class="editor-section">
-        <header>
-            <span class="field-label">Parameters</span>
-            <code class="muted">PARAMETERS.&lt;id&gt;</code>
-            <button type="button" class="ghost" @onclick="() => Set(() => Config.Parameters.Add(Config.NewParameter()))">
-                + Add parameter
-            </button>
-        </header>
-        @if (Config.Parameters.Count > 0)
-        {
-            <table class="series-table edit-table">
-                <thead>
-                    <tr>
-                        <th>Id</th>
-                        <th>Name</th>
-                        <th>Default value</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (IndicatorParameterDraft parameter in Config.Parameters)
-                    {
-                        <tr>
-                            <td>
-                                <input type="text" class="mono" value="@parameter.Id" aria-label="Parameter id"
-                                       @oninput="e => Set(() => parameter.Id = Text(e))" />
-                            </td>
-                            <td>
-                                <input type="text" value="@parameter.Name" aria-label="Parameter name"
-                                       @oninput="e => Set(() => parameter.Name = Text(e))" />
-                            </td>
-                            <td>
-                                <input type="number" value="@Names.Number(parameter.DefaultValue)" aria-label="Default value"
-                                       @oninput="e => Set(() => parameter.DefaultValue = Names.Parse(e.Value))" />
-                            </td>
-                            <td>
-                                <button type="button" class="remove" title="Remove the parameter" aria-label="Remove parameter @parameter.Id"
-                                        @onclick="() => Set(() => Config.Parameters.Remove(parameter))">
-                                    ×
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-        else
-        {
-            <p class="empty">The indicator has no parameters.</p>
-        }
-    </section>
+    <ParameterTable Parameters="Config.Parameters" Kind="indicator" />
 
     <section class="editor-section">
         <header>

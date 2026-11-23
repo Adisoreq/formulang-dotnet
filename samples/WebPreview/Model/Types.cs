@@ -4,7 +4,7 @@ namespace WebPreview.Model
     public enum StandardId { Core, Stock }
 
     /// <summary>Context types of the standards (docs/core/context.md, docs/standards/stock/README.md).</summary>
-    public enum ContextKind { Default, Iteration, Stock, Indicator, Pattern, Strategy }
+    public enum ContextKind { Default, Iteration, Time, Stock, Indicator, Pattern, Strategy }
 
     public sealed record StandardDefinition(StandardId Id, string Name, string Identifier, IReadOnlyList<ContextDefinition> Contexts);
 
@@ -27,14 +27,18 @@ namespace WebPreview.Model
 
     public enum PatternColor { Green, Red }
 
+    /// <param name="PatternId">Identifier of the pattern in the registry: <c>LOAD_PATTERN("ENGULFING")</c>.</param>
     /// <param name="Length">Number of candles of the pattern, ending with the candle where it is detected (width of its rectangle).</param>
     public sealed record PatternConfig(
         string Id, string Name, string Description, string Formula,
+        string PatternId,
+        IReadOnlyList<IndicatorParameterConfig> Parameters,
         PatternType Type, PatternColor Color, int Length)
         : Example(Id, Name, Description, Formula);
 
     // Indicator Context
 
+    /// <summary>A parameter of a definition of the registry (an indicator or a pattern).</summary>
     /// <param name="Id">Key in <c>PARAMETERS</c>.</param>
     public sealed record IndicatorParameterConfig(string Id, string Name, double DefaultValue);
 
@@ -52,7 +56,7 @@ namespace WebPreview.Model
     /// </summary>
     public enum IndicatorType { Normal, Oscillator }
 
-    /// <param name="IndicatorId">Identifier of the indicator in the registry: <c>INDICATOR("SMA")</c>.</param>
+    /// <param name="IndicatorId">Identifier of the indicator in the registry: <c>LOAD_INDICATOR("SMA")</c>.</param>
     public sealed record IndicatorConfig(
         string Id, string Name, string Description, string Formula,
         string IndicatorId,

@@ -20,7 +20,7 @@ Values defined by the standard are copied from it, never chosen in the library:
 
 - error codes and names ([Core errors](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/README.md)),
 - operator spellings, binding powers and associativity ([Operator parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/operator-parsing.md#binding-power)),
-- standard identifiers (`core-0.3`), environment constants and variables ([Core](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md)).
+- standard identifiers (`core-1.0`), environment constants and variables ([Core](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md)).
 
 If the implementation needs something the standard does not define (for example a new error), propose it in the standard first, then implement it.
 
@@ -48,12 +48,51 @@ For a change of the library only (refactoring, performance, API), the standard i
 
 | | Scheme | Example |
 | :-- | :----- | :------ |
-| Standard (Core) | `<name>-<major>.<minor>` | `core-0.2` |
-| Library | [SemVer](https://semver.org) | `0.1.0` |
+| Standard (Core) | `<name>-<major>.<minor>` | `core-1.0` |
+| Library | [SemVer](https://semver.org) | `1.0.0` |
 
 The library version is independent of the standard version: a library release can fix bugs without any change of the standard. Every release lists the standards it supports in the [CHANGELOG](../CHANGELOG.md), and `IEnvironment.Standards` reports the same identifiers at runtime.
 
-While the library is `0.x`, any release can contain breaking API changes.
+Since `1.0.0` the public API follows SemVer: a breaking change of the API needs a new major version. A new minor version of a standard (e.g. `core-1.1`) is implemented in a minor version of the library.
+
+The version of all packages is set once, in `<Version>` of [Directory.Build.props](../Directory.Build.props).
+
+## Conformance tests
+
+The standard repository has language-independent test cases in its `tests/` directory (JSON). They are copied to [tests/FormuLang.NET.Conformance.Tests/conformance](../tests/FormuLang.NET.Conformance.Tests/conformance), with the revision in `conformance/REVISION`, and every case is a test of `ConformanceTests`. When the library is synced with a newer revision of the standard, copy them again:
+
+```bash
+pwsh scripts/sync-conformance.ps1
+```
+
+The script expects a checkout of the standard next to this repository (`../FormuLang`); pass another path with `-Standard`. A case that disagrees with the algorithm of the standard itself is listed in `ConformanceTests.KnownDeviations` (and in [Conformance](conformance.md#known-deviations)) until the standard is fixed.
+
+## Releasing
+
+The packages `FormuLang.NET.Abstractions`, `FormuLang.NET.Core` and `FormuLang.NET.Extensions.Stock` are published on [nuget.org](https://www.nuget.org/packages?q=FormuLang.NET) by the [Release workflow](../.github/workflows/release.yml) when a version tag is pushed. The [CI workflow](../.github/workflows/ci.yml) builds, tests and packs every push and pull request.
+
+One-time setup: create an API key on nuget.org (scope *Push*, glob pattern `FormuLang.NET.*`) and add it to the repository as the secret `NUGET_API_KEY` (*Settings → Secrets and variables → Actions*). The workflow runs in the `nuget` environment, where you can require an approval before publishing.
+
+A release:
+
+1. Set `<Version>` in [Directory.Build.props](../Directory.Build.props) and move the changes from `[Unreleased]` to a new section of the [CHANGELOG](../CHANGELOG.md).
+2. Check the packages locally:
+
+   ```bash
+   dotnet pack src/FormuLang.NET.Core -c Release -o artifacts
+   ```
+
+3. Commit, then tag the commit with the version and push the tag:
+
+   ```bash
+   git tag v1.0.0
+   ```
+
+   ```bash
+   git push origin v1.0.0
+   ```
+
+The workflow checks that the tag matches `<Version>`, runs the tests, pushes the packages and their symbols (`.snupkg`) to nuget.org and creates a GitHub release with the packages. A version that is already on nuget.org is skipped; nuget.org does not allow replacing a published version, only unlisting it.
 
 ## Extensions
 
@@ -71,4 +110,8 @@ dotnet run --project samples/CalculatorCLI
 
 ```bash
 dotnet run --project samples/WebPreview
+```
+
+```bash
+dotnet test FormuLang.NET.sln
 ```

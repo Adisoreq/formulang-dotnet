@@ -51,7 +51,7 @@ namespace FormuLang.NET.Core.Tests
         [InlineData("SET $x 100", "SET$x 100")]
         [InlineData("SET   $x    100", "SET$x 100")]
         [InlineData("\"hello  world\"  +  \"x\"", "\"hello  world\"+\"x\"")]
-        [InlineData("REQUIRE \"core-0.2+\"", "REQUIRE \"core-0.2+\"")]
+        [InlineData("REQUIRE \"core-1+\"", "REQUIRE \"core-1+\"")]
         public void OnlySpacesNextToOperatorsAreRemoved(string input, string expected)
         {
             Assert.Equal(expected, Clean(input));

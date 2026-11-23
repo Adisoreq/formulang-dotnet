@@ -53,6 +53,11 @@ namespace FormuLang.NET.Core.Structures
             return context;
         }
 
+        /// <summary>
+        /// <c>NOW</c> is set once before the first iteration and is the same in all iterations.
+        /// </summary>
+        protected override bool RefreshesNowOnPreExecute => false;
+
         protected override void LoadContextData()
         {
             SetConstant(CountConstant, Value.Number(Count, CountConstant));
@@ -73,6 +78,9 @@ namespace FormuLang.NET.Core.Structures
 
             PreExecute(); // loads the context constants before the first iteration
             ClearVariables();
+
+            if (iteration == 0)
+                RefreshNow();
 
             Iteration = iteration;
             Previous = previous == null || previous.Type.Base == Types.ErrorName ? Value.Null(PreviousConstant) : previous;

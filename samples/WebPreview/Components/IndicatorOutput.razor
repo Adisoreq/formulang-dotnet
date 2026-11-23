@@ -47,28 +47,7 @@
     }
 </div>
 
-@if (Config.Parameters.Count > 0)
-{
-    <div class="parameter-values">
-        <span class="field-label">Parameter values of the chart</span>
-        <div class="config-row">
-            @foreach (IndicatorParameterDraft parameter in Config.Parameters)
-            {
-                <label class="field">
-                    <span class="field-label">
-                        @parameter.Name <code>@parameter.Id</code>
-                    </span>
-                    <input type="number" value="@Names.Number(parameter.Value)"
-                           @oninput="e => Set(() => parameter.Value = Names.Parse(e.Value))" />
-                    <button type="button" class="link" disabled="@(parameter.Value == parameter.DefaultValue)"
-                            @onclick="() => Set(() => parameter.Value = parameter.DefaultValue)">
-                        default @Names.Number(parameter.DefaultValue)
-                    </button>
-                </label>
-            }
-        </div>
-    </div>
-}
+<ParameterValues Parameters="Config.Parameters" />
 
 @code {
     [Parameter, EditorRequired]

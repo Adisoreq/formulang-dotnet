@@ -42,7 +42,12 @@ namespace FormuLang.NET.Core.Processing
                 {
                     char c = Current;
 
-                    if (!StringUtils.IsValidSymbol(c))
+                    // Unicode characters are allowed only inside text literals (a surrogate pair is one code point)
+                    bool allowed = state.Mode == TokenType.Text
+                        ? char.IsSurrogate(c) || StringUtils.IsTextCharacter(c)
+                        : StringUtils.IsValidSymbol(c);
+
+                    if (!allowed)
                         throw SyntaxError($"Invalid symbol U+{(int)c:X4}");
 
                     switch (state.Mode)

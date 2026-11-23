@@ -22,16 +22,28 @@ namespace WebPreview.Model
             new("TIME", "Unix time in milliseconds (Number or null)"),
         ];
 
+        private static readonly ContextConstant[] TimeConstants =
+        [
+            new("TIME_S", "time from the first frame, in seconds"),
+            new("TIME_MS", "time from the first frame, in milliseconds"),
+            new("DTIME_S", "time from the previous frame, in seconds; 0 in the first frame"),
+            new("DTIME_MS", "time from the previous frame, in milliseconds"),
+            new("FRAME", "index of the current frame (follows @array_indexing)"),
+            new("PREV", "result of the previous frame; null in the first one"),
+        ];
+
         public static readonly IReadOnlyList<StandardDefinition> Standards =
         [
-            new(StandardId.Core, "Core 0.3", "core-0.3",
+            new(StandardId.Core, "Core 1.0", "core-1.0",
             [
                 new(ContextKind.Default, StandardId.Core, "Default Context",
                     "Executes the formula once. The result is the value of the last sequence.", []),
                 new(ContextKind.Iteration, StandardId.Core, "Iteration Context",
                     "Executes the formula once per iteration; every iteration starts without variables.", IterationConstants),
+                new(ContextKind.Time, StandardId.Core, "Time Context",
+                    "Executes the formula once per frame as time passes: animations, simulations, clocks.", TimeConstants),
             ]),
-            new(StandardId.Stock, "Stock 0.1", "stock-0.1",
+            new(StandardId.Stock, "Stock 1.0", "stock-1.0",
             [
                 new(ContextKind.Stock, StandardId.Stock, "Stock Context",
                     "Iterates over the candles of the chart; I is the current candle.", StockConstants),
@@ -43,7 +55,11 @@ namespace WebPreview.Model
                         new("SOURCE", "source values; CLOSE by default"),
                     ]),
                 new(ContextKind.Pattern, StandardId.Stock, "Pattern Context",
-                    "Returns a Boolean for every candle: whether the pattern ends at it.", StockConstants),
+                    "Returns a Boolean for every candle: whether the pattern ends at it.",
+                    [
+                        .. StockConstants,
+                        new("PARAMETERS", "parameters of the pattern, completed with the defaults"),
+                    ]),
                 new(ContextKind.Strategy, StandardId.Stock, "Strategy Context",
                     "Returns a signal from SELL (-1) to BUY (1) for every candle.",
                     [
@@ -88,11 +104,50 @@ namespace WebPreview.Model
 
                 { mean: $mean, stdev: $stdev, above_mean: FILTER($data, (x) => x > $mean) }
                 """),
-            new("text", "Text functions", "Functions of texts from Core 0.3.",
+            new("text", "Text functions", "Text functions; a character is one Unicode code point.",
                 """
                 $name = "  formulang  "
                 $clean = UPPERCASE(TRIM($name))
-                [$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG")]
+                $word = "Zażółć gęślą jaźń"
+
+                [$clean, LEN($clean), SPLIT("a,b,c", ","), REPLACE($clean, "LANG", "-LANG"), LEN($word), REVERSE($word)]
+                """),
+            new("format", "Formatting", "FORMAT with sequential, indexed and named placeholders.",
+                """
+                $items = [{ name: "Coffee", price: 12.5 }, { name: "Croissant", price: 7.25 }]
+                $total = SUM(MAP($items, (e) => e.price))
+
+                $lines = MAP($items, (e, i) => FORMAT("{0}. {1} – {2:.2} zł", [i + 1, e.name, e.price]))
+                $summary = FORMAT("Total: {total:.2} zł ({count} items)", { total: $total, count: LEN($items) })
+
+                JOIN($lines, "\n") + "\n" + $summary
+                """),
+            new("time", "Time functions", "NOW, the parts of a date, DATE and FORMAT_TIME.",
+                """
+                <# NOW is the moment of the execution: Unix time in milliseconds, UTC #>
+                @time_offset = 60    # local time UTC+1, only for this execution
+
+                $days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                $today = DATE(YEAR(NOW), MONTH(NOW), DAY(NOW))
+                $new_year = DATE(YEAR(NOW) + 1, 1, 1)
+
+                FORMAT("{} {} · {} days until the new year", [
+                    $days[WEEKDAY(NOW) - 1],
+                    FORMAT_TIME(NOW, "DD.MM.YYYY hh:mm:ss"),
+                    ($new_year - $today) / (24 * 60 * 60 * 1000)
+                ])
+                """),
+            new("comments", "Comments", "Line comments and scoped comments that may span several lines.",
+                """
+                $a = 14          # a line comment ends with the line
+                $b = <# a scoped comment #> 24
+
+                <#
+                A scoped comment may span
+                several lines.
+                #>
+
+                $a + $b
                 """),
             new("serialization", "Serialization", "Serialization variables changed by the formula.",
                 """
@@ -123,6 +178,25 @@ namespace WebPreview.Model
             new("progress", "Progress", "Text built from I and N.", "TEXT(ROUND((I + 1) / N * 100, 0)) + \"%\""),
         ];
 
+        private static readonly Example[] TimeExamples =
+        [
+            new("motion", "Moving point", "Moves with 5 units per second and stops at 100; the position is carried in PREV.",
+                """
+                $speed = 5
+                $position = IF(ISNULL(PREV), 0, PREV)
+                MIN($position + $speed * DTIME_S, 100)
+                """),
+            new("constants", "Constants", "The constants of every frame.", "[FRAME, ROUND(TIME_S, 2), ROUND(DTIME_MS, 1)]"),
+            new("wave", "Sine wave", "A value that oscillates between -1 and 1 every 4 seconds.", "ROUND(SIN(TIME_S / 4 * 2 * PI), 3)"),
+            new("rotation", "Rotation", "An angle that repeats every 4 seconds.", "ROUND(MOD(TIME_S / 4 * 360, 360), 1)"),
+            new("clock", "Clock", "NOW is set again for every frame.", "FORMAT_TIME(NOW, \"hh:mm:ss.iii\")"),
+            new("stopwatch", "Stopwatch", "Frames per second measured from DTIME_S.",
+                """
+                $fps = IF(DTIME_S == 0, 0, 1 / DTIME_S)
+                FORMAT("{:.1} s · frame {} · {:.0} fps", [TIME_S, FRAME, $fps])
+                """),
+        ];
+
         // Stock
 
         private static readonly Example[] StockExamples =
@@ -132,6 +206,8 @@ namespace WebPreview.Model
                 "IF(I == @array_indexing, 0, ROUND((CLOSE[I] - CLOSE[I - 1]) / CLOSE[I - 1] * 100, 2))"),
             new("candle", "Current candle", "The candle itself, as an Object<Stock.Candle>.", "@include_object_class = true\nCANDLES[I]"),
             new("running-max", "Running maximum", "The highest close so far, carried in PREV.", "IF(ISNULL(PREV), CLOSE[I], MAX(PREV, CLOSE[I]))"),
+            new("direction", "Direction", "IS_BULLISH and IS_BEARISH; a doji is neither.",
+                "IF(IS_BULLISH(CANDLES[I]), \"bullish\", IF(IS_BEARISH(CANDLES[I]), \"bearish\", \"doji\"))"),
         ];
 
         /// <summary>The last <c>period</c> values of the source, and whether the window is complete.</summary>
@@ -208,14 +284,14 @@ namespace WebPreview.Model
                 SeriesMode.Single, IndicatorType.Normal),
             new("macd", "MACD", "Difference of two EMAs, its signal line and their histogram (docs/standards/stock/examples).",
                 """
-                $short = INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
-                $long = INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
+                $short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
+                $long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
 
                 # MACD line for every candle: the two series joined element by element
                 $line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
 
                 $macd = $line[I]
-                $signal = INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
+                $signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
 
                 IF(OR(ISNULL($macd), ISNULL($signal)),
                    null,
@@ -249,7 +325,7 @@ namespace WebPreview.Model
                 [new("rsi", "RSI", "Relative strength index", "#c9a7ff", "rgba(201, 167, 255, 0.12)", FillMode.Area)],
                 SeriesMode.Single, IndicatorType.Oscillator),
             new(NewFormula, NewExample.Name,
-                "An empty indicator: return a Number for every candle. It is in the registry as INDICATOR(\"CUSTOM\").",
+                "An empty indicator: return a Number for every candle. Other formulas load it with LOAD_INDICATOR(\"CUSTOM\").",
                 "",
                 "CUSTOM",
                 [],
@@ -264,22 +340,20 @@ namespace WebPreview.Model
             new("bullish-engulfing", "Bullish engulfing", "A bullish candle whose body covers the body of the previous bearish candle.",
                 "# In the first iteration, the previous candle is the current one\n" + Previous + "\n\n" +
                 """
-                $prev_bearish = $prev.close < $prev.open
-                $curr_bullish = $curr.close > $curr.open
                 $covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
 
-                AND(I > @array_indexing, AND($prev_bearish, AND($curr_bullish, $covers)))
+                AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))
                 """,
+                "ENGULFING", [],
                 PatternType.Bullish, PatternColor.Green, 2),
             new("bearish-engulfing", "Bearish engulfing", "A bearish candle whose body covers the body of the previous bullish candle.",
                 Previous + "\n\n" +
                 """
-                $prev_bullish = $prev.close > $prev.open
-                $curr_bearish = $curr.close < $curr.open
                 $covers = AND($curr.open >= $prev.close, $curr.close <= $prev.open)
 
-                AND(I > @array_indexing, AND($prev_bullish, AND($curr_bearish, $covers)))
+                AND(I > @array_indexing, AND(IS_BULLISH($prev), AND(IS_BEARISH($curr), $covers)))
                 """,
+                "BEARISH_ENGULFING", [],
                 PatternType.Bearish, PatternColor.Red, 2),
             new("hammer", "Hammer", "A small body at the top of the candle with a long lower shadow.",
                 """
@@ -289,8 +363,9 @@ namespace WebPreview.Model
                 $lower = MIN($c.open, $c.close) - $c.low
                 $upper = $c.high - MAX($c.open, $c.close)
 
-                AND($range > 0, AND($lower >= 2 * $body, $upper <= 0.15 * $range))
+                AND($range > 0, AND($lower >= PARAMETERS.shadow * $body, $upper <= PARAMETERS.max_upper * $range))
                 """,
+                "HAMMER", [new("shadow", "Lower shadow × body", 2), new("max_upper", "Max upper shadow (of range)", 0.15)],
                 PatternType.Bullish, PatternColor.Green, 1),
             new("shooting-star", "Shooting star", "A small body at the bottom of the candle with a long upper shadow.",
                 """
@@ -300,22 +375,25 @@ namespace WebPreview.Model
                 $lower = MIN($c.open, $c.close) - $c.low
                 $upper = $c.high - MAX($c.open, $c.close)
 
-                AND($range > 0, AND($upper >= 2 * $body, $lower <= 0.15 * $range))
+                AND($range > 0, AND($upper >= PARAMETERS.shadow * $body, $lower <= PARAMETERS.max_lower * $range))
                 """,
+                "SHOOTING_STAR", [new("shadow", "Upper shadow × body", 2), new("max_lower", "Max lower shadow (of range)", 0.15)],
                 PatternType.Bearish, PatternColor.Red, 1),
-            new("three-soldiers", "Three white soldiers", "Three bullish candles in a row, each closing higher than the previous one.",
+            new("three-soldiers", "Three white soldiers", "Bullish candles in a row, each closing higher than the previous one.",
                 """
-                $a = CANDLES[MAX(I - 2, @array_indexing)]
-                $b = CANDLES[MAX(I - 1, @array_indexing)]
-                $c = CANDLES[I]
+                $n = PARAMETERS.count
+                $from = MAX(I - $n + 1, @array_indexing)
 
-                $bullish = AND($a.close > $a.open, AND($b.close > $b.open, $c.close > $c.open))
-                $rising = AND($b.close > $a.close, $c.close > $b.close)
+                # Every candle of the window is bullish and closes higher than the previous one
+                $rising = (k) => AND(IS_BULLISH(CANDLES[k]), IF(k == $from, true, CLOSE[k] > CLOSE[MAX(k - 1, @array_indexing)]))
 
-                AND(I >= @array_indexing + 2, AND($bullish, $rising))
+                AND(I - $n + 1 >= @array_indexing, ALL(SEQ($n, 1, $from), $rising))
                 """,
+                "THREE_SOLDIERS", [new("count", "Candles", 3)],
                 PatternType.Bullish, PatternColor.Green, 3),
-            new(NewFormula, NewExample.Name, "An empty pattern: return true for the candle where the pattern ends.", "",
+            new(NewFormula, NewExample.Name,
+                "An empty pattern: return true for the candle where the pattern ends. Other formulas load it with LOAD_PATTERN(\"CUSTOM\").", "",
+                "CUSTOM", [],
                 PatternType.Bullish, PatternColor.Green, 1),
         ];
 
@@ -323,8 +401,8 @@ namespace WebPreview.Model
         [
             new("crossover", "Moving average crossover", "Buys when the fast SMA crosses above the slow SMA, sells when it crosses below.",
                 """
-                $fast = INDICATOR("SMA", { period: 10 })
-                $slow = INDICATOR("SMA", { period: 30 })
+                $fast = LOAD_INDICATOR("SMA", { period: 10 })
+                $slow = LOAD_INDICATOR("SMA", { period: 30 })
 
                 $p = MAX(I - 1, @array_indexing)
                 $values = [$fast[$p], $slow[$p], $fast[I], $slow[I]]
@@ -339,7 +417,7 @@ namespace WebPreview.Model
                 1, 5),
             new("bollinger-reversion", "Bollinger reversion", "Expects the price to return inside the Bollinger bands.",
                 """
-                $b = INDICATOR("BOLLINGER")[I]
+                $b = LOAD_INDICATOR("BOLLINGER")[I]
 
                 IF(ISNULL($b),
                    NEUTRAL,
@@ -357,6 +435,16 @@ namespace WebPreview.Model
                 IF(AND(ABS($now) > $t, ABS($before) <= $t), SIGN($now), NEUTRAL)
                 """,
                 0.4, 2),
+            new("pattern-trend", "Engulfing above the trend", "Buys on a bullish engulfing pattern (LOAD_PATTERN) above the 20-candle SMA.",
+                """
+                $engulfing = LOAD_PATTERN("ENGULFING")[I]
+                $sma = LOAD_INDICATOR("SMA", { period: 20 })[I]
+
+                IF(ISNULL($sma),
+                   NEUTRAL,
+                   IF(AND($engulfing, CLOSE[I] > $sma), BUY, NEUTRAL))
+                """,
+                1, 4),
             new(NewFormula, "New strategy", "An empty strategy: return a signal from SELL (-1) to BUY (1) for every candle.", "",
                 1, 1),
         ];
@@ -366,6 +454,7 @@ namespace WebPreview.Model
         {
             [ContextKind.Default] = [.. DefaultExamples, NewExample],
             [ContextKind.Iteration] = [.. IterationExamples, NewExample],
+            [ContextKind.Time] = [.. TimeExamples, NewExample],
             [ContextKind.Stock] = [.. StockExamples, NewExample],
             [ContextKind.Indicator] = [.. Indicators],
             [ContextKind.Pattern] = [.. Patterns],

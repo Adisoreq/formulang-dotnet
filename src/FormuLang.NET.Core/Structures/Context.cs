@@ -56,6 +56,10 @@ namespace FormuLang.NET.Core.Structures
                 LoadContextData();
             }
 
+            // Step 2: NOW is set once for the whole execution
+            if (RefreshesNowOnPreExecute || !HasKey(Structures.Environment.NowConstant))
+                RefreshNow();
+
             foreach (string key in Environment.Keys)
             {
                 IContainer container = Environment.GetProperty(key);
@@ -71,6 +75,38 @@ namespace FormuLang.NET.Core.Structures
         /// The basic Core context has no data of its own.
         /// </summary>
         protected virtual void LoadContextData() { }
+
+        /// <summary>
+        /// Whether every <see cref="PreExecute"/> sets <c>NOW</c> to the current time. The Default Context does; the
+        /// Iteration Context sets it once before the first iteration, the Time Context once for every frame.
+        /// </summary>
+        protected virtual bool RefreshesNowOnPreExecute => true;
+
+        /// <summary>
+        /// <c>NOW</c> of every execution in this context instead of the clock of the environment, or <c>null</c>. A
+        /// context created by a function for its caller (e.g. a child Indicator Context) uses the <c>NOW</c> of the caller.
+        /// </summary>
+        public IValue? FixedNow { get; set; }
+
+        /// <summary>
+        /// <c>NOW</c> of the current execution, or <c>null</c> before the first pre-execution.
+        /// </summary>
+        public IValue? Now => HasKey(Structures.Environment.NowConstant)
+            ? GetProperty(Structures.Environment.NowConstant).GetValue()
+            : null;
+
+        /// <summary>
+        /// Sets the <c>NOW</c> constant of the execution (docs/semantics/pre-execution.md, step 2): to
+        /// <paramref name="now"/>, or to the time read with <see cref="Structures.Environment.ReadNow"/>. The value is
+        /// stored in the context, so it does not change while the formula is executed.
+        /// </summary>
+        protected void RefreshNow(IValue? now = null)
+        {
+            now ??= FixedNow ?? Structures.Environment.ReadNow(Environment);
+
+            if (now != null)
+                SetConstant(Structures.Environment.NowConstant, now);
+        }
 
         /// <summary>
         /// Removes every context variable and every copy of an environment variable; context constants are kept.

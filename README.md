@@ -6,7 +6,8 @@
 
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-dotnet)
 ![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)
-[![Status](https://img.shields.io/badge/status-under%20development-orange)](#project-status)
+[![NuGet](https://img.shields.io/nuget/v/FormuLang.NET.Core?label=NuGet)](https://www.nuget.org/packages/FormuLang.NET.Core)
+[![Standards](https://img.shields.io/badge/standards-core--1.0%20%C2%B7%20stock--1.0-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Conformance**](docs/conformance.md) · [**Changelog**](CHANGELOG.md)
 
@@ -46,7 +47,7 @@ Module list:
 | :----- | :---------- |
 | [**FormuLang.NET.Abstractions**](src/FormuLang.NET.Abstractions) | Interfaces and enumerations shared by every module: primitives (`IValue`, `IType`, `IContainer`, `IFunction`), pipeline stages (`IValidator`, `ICleaner`, `ITokenizer`, `IParser`, `IEvaluator`), structures (`IEnvironment`, `IContext`, `IStandard`). No dependencies. |
 | [**FormuLang.NET.Core**](src/FormuLang.NET.Core) | Implementation of the **Core** standard: the execution pipeline, primitives, errors, operators, built-in functions and procedures. |
-| [**FormuLang.NET.Extensions.Stock**](src/FormuLang.NET.Extensions.Stock) | Implementation of the **Stock** extension standard: the `Stock.Candle` type, the Stock, Indicator, Pattern and Strategy contexts, the indicator registry, `CANDLE` and `INDICATOR`. |
+| [**FormuLang.NET.Extensions.Stock**](src/FormuLang.NET.Extensions.Stock) | Implementation of the **Stock** extension standard: the `Stock.Candle` type, the Stock, Indicator, Pattern and Strategy contexts, the formula registry of indicators and patterns, `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR` and `LOAD_PATTERN`. |
 
 Dependency tree:
 
@@ -62,6 +63,25 @@ ES --> C --> A
 ```
 
 More: [Architecture](docs/architecture.md).
+
+
+## Installation
+
+The modules are published on NuGet as separate packages. `FormuLang.NET.Core` brings `FormuLang.NET.Abstractions` with it.
+
+```bash
+dotnet add package FormuLang.NET.Core
+```
+
+```bash
+dotnet add package FormuLang.NET.Extensions.Stock
+```
+
+| Package | Standard |
+| :------ | :------- |
+| [FormuLang.NET.Abstractions](https://www.nuget.org/packages/FormuLang.NET.Abstractions) | - |
+| [FormuLang.NET.Core](https://www.nuget.org/packages/FormuLang.NET.Core) | `core-1.0` |
+| [FormuLang.NET.Extensions.Stock](https://www.nuget.org/packages/FormuLang.NET.Extensions.Stock) | `stock-1.0` |
 
 
 ## Quick example
@@ -98,6 +118,8 @@ dotnet build FormuLang.NET.sln
 dotnet test FormuLang.NET.sln
 ```
 
+The tests include the language-independent [conformance tests](tests/FormuLang.NET.Conformance.Tests) of the standard. Releases are described in [Development](docs/development.md#releasing).
+
 
 ## Related projects
 
@@ -105,7 +127,7 @@ dotnet test FormuLang.NET.sln
 <br> Language standard, reference point for syntax and semantics rules.
 
 - [**FormuLang-TS**](https://github.com/Adisoreq/formulang-ts)
-<br> Language standard, reference point for syntax and semantics rules.
+<br> TypeScript implementation of the standard.
 
 
 ## Authors

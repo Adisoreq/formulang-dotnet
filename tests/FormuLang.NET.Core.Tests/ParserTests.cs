@@ -27,13 +27,13 @@ namespace FormuLang.NET.Core.Tests
             Assert.Equal(Errors.SyntaxErrorCode, Parse(formula).Error.Code);
         }
 
-        private const string Example = "REQUIRE \"core-0.2+\"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)";
+        private const string Example = "REQUIRE \"core-1+\"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)";
 
         [Fact]
         public void Parsing_Example_Sequences()
         {
             Assert.Equal(
-                ["REQUIRE(\"core-0.2+\")", "SET($a,4)", "SET($b,3)", "SET($c,ADD(POW($a,2),POW($b,2)))", "SQRT($c)"],
+                ["REQUIRE(\"core-1+\")", "SET($a,4)", "SET($b,3)", "SET($c,ADD(POW($a,2),POW($b,2)))", "SQRT($c)"],
                 Roots(Example));
         }
 
@@ -55,7 +55,7 @@ namespace FormuLang.NET.Core.Tests
             var map = Parse(Example).PrimitiveMap;
 
             Assert.Equal(15, map.Count);
-            Assert.Equal(ExpressionKind.Value, map["\"core-0.2+\""].Kind);
+            Assert.Equal(ExpressionKind.Value, map["\"core-1+\""].Kind);
             Assert.Equal(ExpressionKind.Variable, map["$a"].Kind);
             Assert.Equal(ExpressionKind.FunctionCall, map["POW($a,2)"].Kind);
             Assert.Equal(ExpressionKind.FunctionCall, map["SQRT($c)"].Kind);
@@ -116,7 +116,7 @@ namespace FormuLang.NET.Core.Tests
         [Theory]
         [InlineData("SET $x 100", "SET($x,100)")]
         [InlineData("SET $x 1 + 2", "SET($x,ADD(1,2))")]
-        [InlineData("REQUIRE \"core-0.2+\"", "REQUIRE(\"core-0.2+\")")]
+        [InlineData("REQUIRE \"core-1+\"", "REQUIRE(\"core-1+\")")]
         [InlineData("SET($x, 100)", "SET($x,100)")]
         public void ProcedureCallWithoutParentheses(string formula, string expected)
         {

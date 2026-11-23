@@ -8,6 +8,10 @@
             <input type="text" value="@Pattern.Name" @oninput="e => Set(() => Pattern.Name = e.Value?.ToString() ?? string.Empty)" />
         </label>
         <label class="field">
+            <span class="field-label">Registry id</span>
+            <input type="text" class="mono" value="@Pattern.PatternId" @oninput="e => Set(() => Pattern.PatternId = e.Value?.ToString() ?? string.Empty)" />
+        </label>
+        <label class="field">
             <span class="field-label">Type</span>
             <select value="@Names.Css(Pattern.Type)" @onchange="e => Set(() => Pattern.Type = Enum.Parse<PatternType>(e.Value?.ToString() ?? string.Empty, true))">
                 <option value="bullish">bullish</option>
@@ -29,8 +33,15 @@
     <p class="config-note">
         The formula returns <code>true</code> for the candle where the pattern ends; its rectangle covers that candle
         and the @Names.Number(Pattern.Length - 1) before it. The color and the label are set below the chart.
+        Other formulas load it with <code>LOAD_PATTERN("@Pattern.PatternId")</code>, with the default values of its
+        parameters.
     </p>
-    <ProblemList Items="Pattern.Problems()" />
+
+    <ParameterTable Parameters="Pattern.Parameters" Kind="pattern" />
+
+    <ProblemList Items="Pattern.Problems(State.Patterns)">
+        <li class="muted">Until they are fixed, the pattern is not in the registry.</li>
+    </ProblemList>
     <div class="config-actions">
         <button type="button" class="link" @onclick="() => State.ResetPattern(Pattern.Id)">
             restore the definition of the example

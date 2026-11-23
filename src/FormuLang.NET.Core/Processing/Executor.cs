@@ -125,6 +125,45 @@ namespace FormuLang.NET.Core.Processing
         }
 
         /// <summary>
+        /// Prepares the execution of a formula in the frames of a Time Context (docs/core/context.md, "Time Context").
+        /// The formula is validated, tokenized and parsed only once; every <see cref="FrameRunner.NextFrame"/> executes
+        /// one frame.
+        /// </summary>
+        public FrameRunner CreateFrameRunner(string formula, TimeContext context)
+        {
+            context.BeginFrame(0, 0, 0, null);
+            ExecutionResult? failure = Prepare(formula, context, out IParsingResult? parsing);
+            return new FrameRunner(this, context, parsing, failure);
+        }
+
+        /// <summary>
+        /// Executes the formula once for every frame (time and delta in seconds, optional <c>NOW</c> in milliseconds).
+        /// The formula is parsed only once.
+        /// </summary>
+        /// <param name="stopOnError">
+        /// <c>true</c> stops at the first frame that results in an Error, <c>false</c> executes every frame.
+        /// </param>
+        public IterationExecutionResult ExecuteFrames(string formula, TimeContext context,
+            IEnumerable<(double TimeSeconds, double DeltaSeconds, double? Now)> frames, bool stopOnError = true)
+        {
+            FrameRunner runner = CreateFrameRunner(formula, context);
+            var results = new List<ExecutionResult>();
+
+            foreach (var (time, delta, now) in frames)
+            {
+                ExecutionResult result = runner.NextFrame(time, delta, now);
+                results.Add(result);
+
+                if (runner.PreparationError != null || (!result.Successful && stopOnError))
+                    break;
+            }
+
+            return new IterationExecutionResult(results);
+        }
+
+        internal ExecutionResult EvaluateFrame(IParsingResult parsing, IContext context) => Evaluate(parsing, context);
+
+        /// <summary>
         /// Stages 1-4: validation, clean-up, tokenization and parsing.
         /// </summary>
         /// <returns>The failed result, or <c>null</c> if <paramref name="parsing"/> is ready to be evaluated.</returns>

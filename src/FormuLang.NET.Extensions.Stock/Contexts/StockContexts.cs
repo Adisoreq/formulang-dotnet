@@ -22,13 +22,29 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
         /// </summary>
         public IReadOnlyList<Candle> Candles => Series.Candles;
 
-        private protected StockContext(IEnvironment environment, StockSeries series)
+        /// <summary>
+        /// Context that called <c>LOAD_INDICATOR</c> or <c>LOAD_PATTERN</c>, or <c>null</c> if the host application
+        /// created this context.
+        /// </summary>
+        public IContext? Caller { get; }
+
+        /// <summary>
+        /// Key of the computed indicator or pattern (identifier, completed parameters and source); <c>null</c> if the
+        /// host application created this context.
+        /// </summary>
+        internal string? FormulaKey { get; }
+
+        private protected StockContext(IEnvironment environment, StockSeries series, string? formulaKey = null, IContext? caller = null)
             : base(environment, series.Count)
         {
             Series = series;
+            FormulaKey = formulaKey;
+            Caller = caller;
         }
 
-        /// <param name="executor">Executor of the indicator formulas called with <c>INDICATOR</c>; the Core executor by default.</param>
+        /// <param name="executor">
+        /// Executor of the formulas loaded with <c>LOAD_INDICATOR</c> and <c>LOAD_PATTERN</c>; the Core executor by default.
+        /// </param>
         /// <exception cref="ArgumentException">A candle breaks the rules of <c>Stock.Candle</c>.</exception>
         public static StockContext Create(IEnvironment environment, IEnumerable<Candle> candles, Executor? executor = null)
             => Prepare(new StockContext(environment, new StockSeries(candles, executor)));
@@ -53,24 +69,39 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
         }
 
         /// <summary>
-        /// Computes an indicator of the registry for these candles, like <c>INDICATOR(id, parameters, source)</c>.
+        /// Computes an indicator of the registry for these candles, like <c>LOAD_INDICATOR(id, parameters, source)</c>.
         /// </summary>
         /// <param name="parameters">Parameters of the indicator; missing ones have their default values.</param>
         /// <param name="source">Input series (<c>N</c> Numbers or <c>null</c> values); <c>CLOSE</c> by default.</param>
         /// <returns>An Array of <c>N</c> values, or an Error.</returns>
         public IValue ComputeIndicator(string id, IObject? parameters = null, IValue? source = null)
-        {
-            IFunction? indicator = Environment.GetFunction(StockFunctions.IndicatorName);
-
-            if (indicator == null)
-                return Value.Error(Core.Errors.UnknownSymbolError($"The environment does not support {StockStandard.Identifier}."), "");
-
-            return indicator.Invoke(
+            => Invoke(StockFunctions.LoadIndicatorName,
             [
                 Value.Text(id, ""),
                 Value.Object(parameters ?? new Core.Primitives.Object(), ""),
                 source ?? Series.Close,
-            ], this);
+            ]);
+
+        /// <summary>
+        /// Checks a pattern of the registry for these candles, like <c>LOAD_PATTERN(id, parameters)</c>.
+        /// </summary>
+        /// <param name="parameters">Parameters of the pattern; missing ones have their default values.</param>
+        /// <returns>An Array of <c>N</c> Booleans, or an Error.</returns>
+        public IValue ComputePattern(string id, IObject? parameters = null)
+            => Invoke(StockFunctions.LoadPatternName,
+            [
+                Value.Text(id, ""),
+                Value.Object(parameters ?? new Core.Primitives.Object(), ""),
+            ]);
+
+        private IValue Invoke(string functionName, IValue[] arguments)
+        {
+            IFunction? function = Environment.GetFunction(functionName);
+
+            if (function == null)
+                return Value.Error(Core.Errors.UnknownSymbolError($"The environment does not support {StockStandard.Identifier}."), "");
+
+            return function.Invoke(arguments, this);
         }
     }
 
@@ -85,25 +116,12 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
 
         public IValue Source { get; }
 
-        /// <summary>
-        /// Context that called <c>INDICATOR</c>, or <c>null</c> if the host application created this context.
-        /// </summary>
-        public IContext? Caller { get; }
-
-        /// <summary>
-        /// Identifier, completed parameters and source of the computed indicator; <c>null</c> if the host application
-        /// created this context.
-        /// </summary>
-        internal string? IndicatorKey { get; }
-
         internal IndicatorContext(IEnvironment environment, StockSeries series, IValue parameters, IValue source,
             string? indicatorKey, IContext? caller)
-            : base(environment, series)
+            : base(environment, series, indicatorKey, caller)
         {
             Parameters = parameters;
             Source = source;
-            IndicatorKey = indicatorKey;
-            Caller = caller;
         }
 
         /// <summary>
@@ -136,15 +154,32 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
 
     /// <summary>
     /// <b>Pattern Context</b> (docs/standards/stock/README.md, "Pattern Context"): the formula returns <c>true</c> if the
-    /// pattern starts at the current candle. Run it with <see cref="StockExecutor.ExecutePattern"/>.
+    /// pattern is found at the current candle. Constant: <c>PARAMETERS</c>. Run it with
+    /// <see cref="StockExecutor.ExecutePattern"/>.
     /// </summary>
     public class PatternContext : StockContext
     {
-        private protected PatternContext(IEnvironment environment, StockSeries series) : base(environment, series) { }
+        public IValue Parameters { get; }
 
+        internal PatternContext(IEnvironment environment, StockSeries series, IValue parameters, string? patternKey, IContext? caller)
+            : base(environment, series, patternKey, caller)
+        {
+            Parameters = parameters;
+        }
+
+        /// <param name="parameters">The <c>PARAMETERS</c> object (not completed with default values); <c>{ }</c> by default.</param>
         /// <exception cref="ArgumentException">A candle breaks the rules of <c>Stock.Candle</c>.</exception>
-        public static new PatternContext Create(IEnvironment environment, IEnumerable<Candle> candles, Executor? executor = null)
-            => Prepare(new PatternContext(environment, new StockSeries(candles, executor)));
+        public static PatternContext Create(IEnvironment environment, IEnumerable<Candle> candles, Executor? executor = null,
+            IObject? parameters = null)
+            => Prepare(new PatternContext(environment, new StockSeries(candles, executor),
+                Value.Object(parameters ?? new Core.Primitives.Object(), "PARAMETERS"), null, null));
+
+        protected override void LoadContextData()
+        {
+            base.LoadContextData();
+
+            SetConstant("PARAMETERS", Parameters);
+        }
     }
 
     /// <summary>

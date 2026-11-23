@@ -15,7 +15,7 @@ namespace FormuLang.NET.Core.Tests
         [Fact]
         public void Parsing_Example_Result()
         {
-            Assert.Equal("5", Run("REQUIRE \"core-0.2+\"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)"));
+            Assert.Equal("5", Run("REQUIRE \"core-1+\"\n\n$a = 4\n$b = 3\n$c = $a^2 + $b^2\n\nSQRT($c)"));
         }
 
         // evaluation.md, "Reading variables"
@@ -110,10 +110,10 @@ namespace FormuLang.NET.Core.Tests
 
         // procedures/REQUIRE.md
         [Theory]
-        [InlineData("REQUIRE \"core-0.2+\"", "[SUCCESS (0)] Operation completed successfully.")]
-        [InlineData("REQUIRE([\"core-0.x\", \"core-0.3\"])", "[SUCCESS (0)] Operation completed successfully.")]
+        [InlineData("REQUIRE \"core-1+\"", "[SUCCESS (0)] Operation completed successfully.")]
+        [InlineData("REQUIRE([\"core-1.x\", \"core-1.0\"])", "[SUCCESS (0)] Operation completed successfully.")]
         [InlineData("REQUIRE \"stock-5.2+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"stock-5.2+\" is not supported.")]
-        [InlineData("REQUIRE \"core-1.0+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"core-1.0+\" is not supported.")]
+        [InlineData("REQUIRE \"core-1.1+\"", "[NOT_SUPPORTED_ERROR (11)] Standard \"core-1.1+\" is not supported.")]
         [InlineData("REQUIRE \"core\"", "[OPERATION_ERROR (3)] \"core\" is not a valid standard requirement.")]
         [InlineData("REQUIRE([1])", "[ARGUMENT_ERROR (6)] No overload of \"REQUIRE\" matches the arguments (Array).")]
         public void Require(string formula, string expected)
@@ -156,8 +156,8 @@ namespace FormuLang.NET.Core.Tests
 
         // examples/environment_examples.md
         [Theory]
-        [InlineData("$standards = JOIN(STANDARDS, \", \")\nCONCAT(\"Supported standards: \", $standards)", "Supported standards: core-0.3")]
-        [InlineData("REQUIRE \"core-0.3\"\nREQUIRE \"stock-5.2+\"\n$diff = CLOSE[I] - OPEN[I]", "[NOT_SUPPORTED_ERROR (11)] Standard \"stock-5.2+\" is not supported.")]
+        [InlineData("$standards = JOIN(STANDARDS, \", \")\nCONCAT(\"Supported standards: \", $standards)", "Supported standards: core-1.0")]
+        [InlineData("REQUIRE \"core-1.0\"\nREQUIRE \"stock-5.2+\"\n$diff = CLOSE[I] - OPEN[I]", "[NOT_SUPPORTED_ERROR (11)] Standard \"stock-5.2+\" is not supported.")]
         [InlineData("$radius = 2\nMUL(PI, POW($radius, 2))", "12.566370614359172")]
         [InlineData("@array_indexing = 1\n$elements = ARRAY(10, 20, 30, 40)\n$elements[1]", "10")]
         public void EnvironmentExamples(string formula, string expected)

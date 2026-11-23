@@ -3,6 +3,8 @@ using FormuLang.NET.Abstractions.Processing;
 using FormuLang.NET.Abstractions.Structures;
 using FormuLang.NET.Core.Primitives;
 using FormuLang.NET.Core.Utils;
+using System.Buffers;
+using System.Text;
 
 namespace FormuLang.NET.Core.Processing
 {
@@ -12,7 +14,7 @@ namespace FormuLang.NET.Core.Processing
     /// </summary>
     public class Validator : IValidator
     {
-        private enum Mode { Code, Text, Comment }
+        private enum Mode { Code, Text, Comment, ScopedComment }
 
         private readonly record struct Position(int Line, int Column)
         {
@@ -47,6 +49,12 @@ namespace FormuLang.NET.Core.Processing
                     errors.Add(MissingConstant(name, Types.NumberName));
             }
 
+            IValue? now = Read(environment, Structures.Environment.NowConstant, ContainerType.Constant);
+            if (now?.Type.Base != Types.NumberName)
+                errors.Add(MissingConstant(Structures.Environment.NowConstant, Types.NumberName));
+            else if (now.Raw is double time && Math.Floor(time) != time)
+                errors.Add(Errors.EnvironmentError($"Environment constant \"{Structures.Environment.NowConstant}\" must be a whole number."));
+
             if (Read(environment, "NULL", ContainerType.Constant)?.Type.Base != Types.NullName)
                 errors.Add(MissingConstant("NULL", Types.NullName));
 
@@ -55,6 +63,7 @@ namespace FormuLang.NET.Core.Processing
 
             CheckWholeNumberVariable(environment, "array_indexing", errors);
             CheckVariable(environment, "suppress_errors", Types.BooleanName, errors);
+            CheckWholeNumberVariable(environment, Standards.CoreFunctions.TimeOffsetName, errors);
 
             // Serialization variables
             CheckWholeNumberVariable(environment, SerializationOptions.DecimalPlaceName, errors);
@@ -112,16 +121,23 @@ namespace FormuLang.NET.Core.Processing
             Mode mode = Mode.Code;
             bool escape = false;
             var delimiters = new Stack<(char Symbol, Position Position)>();
-            Position textStart = default;
+            Position textStart = default, commentStart = default;
 
             int line = 1, column = 0;
+            int i = 0;
 
-            for (int i = 0; i < formula.Length; i++)
+            while (i < formula.Length)
             {
-                char c = formula[i];
-                bool lineBreak = c == '\n' || c == '\r';
+                // Characters are Unicode code points: a surrogate pair is one character
+                Rune rune = Rune.DecodeFromUtf16(formula.AsSpan(i), out Rune decoded, out int length) == OperationStatus.Done
+                    ? decoded
+                    : Rune.ReplacementChar;
+                int value = rune.Value;
+                i += Math.Max(length, 1);
 
-                if (lineBreak && c == '\r' && i + 1 < formula.Length && formula[i + 1] == '\n')
+                bool lineBreak = value == '\n' || value == '\r';
+
+                if (value == '\r' && i < formula.Length && formula[i] == '\n')
                     i++;
 
                 if (!lineBreak)
@@ -140,9 +156,26 @@ namespace FormuLang.NET.Core.Processing
                     continue;
                 }
 
-                if (!lineBreak && !StringUtils.IsValidSymbol(c))
+                if (mode == Mode.ScopedComment)
                 {
-                    errors.Add(Errors.SyntaxError($"Invalid symbol \"{Display(c)}\" at {position}."));
+                    if (lineBreak)
+                    {
+                        line++;
+                        column = 0;
+                    }
+                    else if (value == '#' && i < formula.Length && formula[i] == '>')
+                    {
+                        i++;
+                        column++;
+                        mode = Mode.Code;
+                    }
+                    continue;
+                }
+
+                bool allowed = mode == Mode.Text ? StringUtils.IsTextCharacter(value) : value < 128 && StringUtils.IsValidSymbol((char)value);
+                if (!lineBreak && !allowed)
+                {
+                    errors.Add(Errors.SyntaxError($"Invalid symbol \"{Display(rune)}\" at {position}."));
                     continue;
                 }
 
@@ -165,20 +198,28 @@ namespace FormuLang.NET.Core.Processing
                     if (escape)
                     {
                         escape = false;
-                        if (c != '\\' && c != '"' && c != 'n' && c != 't')
-                            errors.Add(Errors.SyntaxError($"Invalid escape sequence \"\\{c}\" at {position}."));
+                        if (value != '\\' && value != '"' && value != 'n' && value != 't')
+                            errors.Add(Errors.SyntaxError($"Invalid escape sequence \"\\{rune}\" at {position}."));
                     }
-                    else if (c == '"')
+                    else if (value == '"')
                         mode = Mode.Code;
-                    else if (c == '\\')
+                    else if (value == '\\')
                         escape = true;
 
                     continue;
                 }
 
-                // Code
+                // Code: only ASCII symbols reach this point
+                char c = (char)value;
                 switch (c)
                 {
+                    case '<' when i < formula.Length && formula[i] == '#':
+                        i++;
+                        column++;
+                        commentStart = position;
+                        mode = Mode.ScopedComment;
+                        break;
+
                     case '#':
                         mode = Mode.Comment;
                         break;
@@ -208,13 +249,16 @@ namespace FormuLang.NET.Core.Processing
             if (mode == Mode.Text)
                 errors.Add(Errors.SyntaxError($"Text literal is not closed at {textStart}."));
 
+            if (mode == Mode.ScopedComment)
+                errors.Add(Errors.SyntaxError($"Scoped comment is not closed at {commentStart}."));
+
             foreach (var (symbol, position) in delimiters)
                 errors.Add(Errors.SyntaxError($"Unclosed \"{symbol}\" at {position}."));
         }
 
         private static char Opening(char closing) => closing switch { ')' => '(', ']' => '[', _ => '{' };
 
-        private static string Display(char c) => char.IsControl(c) ? $"U+{(int)c:X4}" : c.ToString();
+        private static string Display(Rune rune) => Rune.IsControl(rune) ? $"U+{rune.Value:X4}" : rune.ToString();
     }
 
     public sealed class ValidationResult : IValidationResult

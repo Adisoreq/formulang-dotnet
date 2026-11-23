@@ -9,9 +9,9 @@ namespace WebPreview.Model
         /// <summary>Key in <c>PARAMETERS</c>.</summary>
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
-        /// <summary>Default value of the definition in the registry (used by <c>INDICATOR(id)</c> in other formulas).</summary>
+        /// <summary>Default value of the definition in the registry (used by <c>LOAD_INDICATOR(id)</c> and <c>LOAD_PATTERN(id)</c> in other formulas).</summary>
         public double DefaultValue { get; set; }
-        /// <summary>Value set in the preview, used for the chart of the indicator.</summary>
+        /// <summary>Value set in the preview, used for the chart of the indicator or the pattern.</summary>
         public double Value { get; set; }
     }
 
@@ -29,7 +29,7 @@ namespace WebPreview.Model
     {
         /// <summary>Key of the indicator in the preview (not editable).</summary>
         public required string Id { get; init; }
-        /// <summary>Identifier in the registry: <c>INDICATOR("SMA")</c>.</summary>
+        /// <summary>Identifier in the registry: <c>LOAD_INDICATOR("SMA")</c>.</summary>
         public string IndicatorId { get; set; } = "";
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
@@ -44,10 +44,7 @@ namespace WebPreview.Model
             IndicatorId = config.IndicatorId,
             Name = config.Name,
             Description = config.Description,
-            Parameters = config.Parameters.Select(p => new IndicatorParameterDraft
-            {
-                Id = p.Id, Name = p.Name, DefaultValue = p.DefaultValue, Value = p.DefaultValue,
-            }).ToList(),
+            Parameters = Registry.ParametersOf(config.Parameters),
             Series = config.Series.Select(s => new SeriesDraft
             {
                 Id = s.Id, Name = s.Name, Description = s.Description,
@@ -62,56 +59,28 @@ namespace WebPreview.Model
         /// <summary>A new series with a free id and the next color.</summary>
         public SeriesDraft NewSeries()
         {
-            string id = FreeId("series", Series.Select(s => s.Id).ToList());
+            string id = Registry.FreeId("series", Series.Select(s => s.Id).ToList());
             string color = SeriesColors[Series.Count % SeriesColors.Length];
             return new SeriesDraft { Id = id, Name = id, Description = "", LineColor = color, FillColor = "transparent", FillMode = FillMode.Line };
         }
 
         /// <summary>A new parameter with a free id.</summary>
-        public IndicatorParameterDraft NewParameter()
-        {
-            string id = FreeId("param", Parameters.Select(p => p.Id).ToList());
-            return new IndicatorParameterDraft { Id = id, Name = id, DefaultValue = 1, Value = 1 };
-        }
-
-        private static string FreeId(string prefix, IReadOnlyList<string> used)
-        {
-            for (int i = used.Count + 1; ; i++)
-            {
-                if (!used.Contains($"{prefix}{i}"))
-                    return $"{prefix}{i}";
-            }
-        }
-
-        private static IEnumerable<string> Duplicates(IEnumerable<string> values)
-            => values.GroupBy(v => v, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key);
+        public IndicatorParameterDraft NewParameter() => Registry.NewParameter(Parameters);
 
         /// <summary>
         /// Problems of the definition of an indicator. An indicator with problems is not in the registry, so
-        /// <c>INDICATOR(id)</c> returns <c>INVALID_KEY_ERROR</c> for it.
+        /// <c>LOAD_INDICATOR(id)</c> returns <c>INVALID_KEY_ERROR</c> for it.
         /// </summary>
         public List<string> Problems(IEnumerable<IndicatorDraft> all)
         {
-            var problems = new List<string>();
+            List<string> problems = Registry.Problems(IndicatorId, "indicator",
+                all.Where(other => other != this).Select(other => other.IndicatorId), Parameters);
+
             void Identifier(string value, string what)
             {
                 if (!IdentifierValidator.Validate(value))
                     problems.Add($"{what} \"{value}\" is not a valid identifier (^[a-zA-Z_]\\w*$).");
             }
-
-            Identifier(IndicatorId, "Registry id");
-            if (all.Any(other => other != this && other.IndicatorId == IndicatorId))
-                problems.Add($"Registry id \"{IndicatorId}\" is used by another indicator.");
-
-            foreach (IndicatorParameterDraft p in Parameters)
-            {
-                Identifier(p.Id, "Parameter id");
-                if (!double.IsFinite(p.DefaultValue))
-                    problems.Add($"Parameter \"{p.Id}\" has no valid default value.");
-            }
-
-            foreach (string id in Duplicates(Parameters.Select(p => p.Id)))
-                problems.Add($"Parameter id \"{id}\" is defined more than once.");
 
             if (Series.Count == 0)
                 problems.Add("The indicator has no series to draw.");
@@ -119,7 +88,7 @@ namespace WebPreview.Model
             foreach (SeriesDraft s in Series)
                 Identifier(s.Id, "Series id");
 
-            foreach (string id in Duplicates(Series.Select(s => s.Id)))
+            foreach (string id in Registry.Duplicates(Series.Select(s => s.Id)))
                 problems.Add($"Series id \"{id}\" is defined more than once.");
 
             return problems;
@@ -132,7 +101,10 @@ namespace WebPreview.Model
 
         /// <summary>Key of the pattern in the preview (not editable).</summary>
         public required string Id { get; init; }
+        /// <summary>Identifier in the registry: <c>LOAD_PATTERN("ENGULFING")</c>.</summary>
+        public string PatternId { get; set; } = "";
         public string Name { get; set; } = "";
+        public List<IndicatorParameterDraft> Parameters { get; set; } = [];
         public string Description { get; set; } = "";
         public PatternType Type { get; set; }
         /// <summary>Number of candles of the pattern, ending with the candle where it is detected.</summary>
@@ -144,17 +116,82 @@ namespace WebPreview.Model
 
         public static PatternDraft Of(PatternConfig config) => new()
         {
-            Id = config.Id, Name = config.Name, Description = config.Description,
+            Id = config.Id, PatternId = config.PatternId, Name = config.Name, Description = config.Description,
+            Parameters = Registry.ParametersOf(config.Parameters),
             Type = config.Type, Length = config.Length, Color = config.Color, ShowLabel = true,
         };
 
-        public List<string> Problems()
+        /// <summary>A new parameter with a free id.</summary>
+        public IndicatorParameterDraft NewParameter() => Registry.NewParameter(Parameters);
+
+        /// <summary>
+        /// Problems of the definition of a pattern. A pattern with problems is not in the registry, so
+        /// <c>LOAD_PATTERN(id)</c> returns <c>INVALID_KEY_ERROR</c> for it.
+        /// </summary>
+        /// <param name="all">Every pattern of the preview, to check that the registry id is unique; <c>null</c> to skip the check.</param>
+        public List<string> Problems(IEnumerable<PatternDraft>? all = null)
         {
-            var problems = new List<string>();
+            List<string> problems = Registry.Problems(PatternId, "pattern",
+                (all ?? []).Where(other => other != this).Select(other => other.PatternId), Parameters);
+
             if (Name.Trim().Length == 0)
                 problems.Add("The pattern has no name.");
             if (Length != Math.Floor(Length) || Length < 1 || Length > MaxLength)
                 problems.Add($"The number of candles must be a whole number from 1 to {MaxLength}.");
+            return problems;
+        }
+    }
+
+    /// <summary>Rules shared by the definitions of the registry: indicators and patterns.</summary>
+    public static class Registry
+    {
+        public static List<IndicatorParameterDraft> ParametersOf(IEnumerable<IndicatorParameterConfig> parameters)
+            => parameters.Select(p => new IndicatorParameterDraft { Id = p.Id, Name = p.Name, DefaultValue = p.DefaultValue, Value = p.DefaultValue }).ToList();
+
+        /// <summary>A new parameter with a free id.</summary>
+        public static IndicatorParameterDraft NewParameter(IReadOnlyList<IndicatorParameterDraft> parameters)
+        {
+            string id = FreeId("param", parameters.Select(p => p.Id).ToList());
+            return new IndicatorParameterDraft { Id = id, Name = id, DefaultValue = 1, Value = 1 };
+        }
+
+        public static string FreeId(string prefix, IReadOnlyList<string> used)
+        {
+            for (int i = used.Count + 1; ; i++)
+            {
+                if (!used.Contains($"{prefix}{i}"))
+                    return $"{prefix}{i}";
+            }
+        }
+
+        public static IEnumerable<string> Duplicates(IEnumerable<string> values)
+            => values.GroupBy(v => v, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key);
+
+        /// <summary>Problems of the registry id and of the parameters of a definition.</summary>
+        /// <param name="otherIds">Registry ids of the other definitions of the same part of the registry.</param>
+        public static List<string> Problems(string registryId, string kind, IEnumerable<string> otherIds, IReadOnlyList<IndicatorParameterDraft> parameters)
+        {
+            var problems = new List<string>();
+            void Identifier(string value, string what)
+            {
+                if (!IdentifierValidator.Validate(value))
+                    problems.Add($"{what} \"{value}\" is not a valid identifier (^[a-zA-Z_]\\w*$).");
+            }
+
+            Identifier(registryId, "Registry id");
+            if (otherIds.Contains(registryId, StringComparer.Ordinal))
+                problems.Add($"Registry id \"{registryId}\" is used by another {kind}.");
+
+            foreach (IndicatorParameterDraft p in parameters)
+            {
+                Identifier(p.Id, "Parameter id");
+                if (!double.IsFinite(p.DefaultValue))
+                    problems.Add($"Parameter \"{p.Id}\" has no valid default value.");
+            }
+
+            foreach (string id in Duplicates(parameters.Select(p => p.Id)))
+                problems.Add($"Parameter id \"{id}\" is defined more than once.");
+
             return problems;
         }
     }

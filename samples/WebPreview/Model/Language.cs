@@ -31,6 +31,8 @@ namespace WebPreview.Model
         // other scripts too, so the classes are written out
         private static readonly (Regex Pattern, TokenClass? Class)[] Rules =
         [
+            // A scoped comment may span lines; an unclosed one ends with the formula
+            (new Regex(@"\G<#[\s\S]*?(?:#>|\z)"), TokenClass.Comment),
             (new Regex(@"\G#[^\n]*"), TokenClass.Comment),
             (new Regex(@"\G""(?:[^""\\\n]|\\.)*""?"), TokenClass.Text),
             (new Regex(@"\G(?:0[xX][0-9a-fA-F]+|(?:[0-9][0-9_]*(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"), TokenClass.Number),

@@ -4,10 +4,10 @@ Status of the implementation against the FormuLang standard.
 
 | | |
 | :-- | :-- |
-| **Target standards** | Core `core-0.3`, Stock `stock-0.1` (both in progress) |
-| **Standard revision checked** | [`Adisoreq/FormuLang@87614e0`](https://github.com/Adisoreq/FormuLang/tree/87614e0) (2026-11-09) |
-| **Last review** | 2026-11-09 |
-| **Conformance tests** | [tests/FormuLang.NET.Core.Tests](../tests/FormuLang.NET.Core.Tests), [tests/FormuLang.NET.Extensions.Stock.Tests](../tests/FormuLang.NET.Extensions.Stock.Tests) |
+| **Target standards** | Core `core-1.0`, Stock `stock-1.0` |
+| **Standard revision checked** | [`Adisoreq/FormuLang@c40e08a`](https://github.com/Adisoreq/FormuLang/tree/c40e08a) (2026-11-23) |
+| **Last review** | 2026-11-23 |
+| **Conformance tests** | [tests/FormuLang.NET.Conformance.Tests](../tests/FormuLang.NET.Conformance.Tests) (the JSON test cases of the standard: 138 of 139 pass, see [D3](#known-deviations)), [tests/FormuLang.NET.Core.Tests](../tests/FormuLang.NET.Core.Tests), [tests/FormuLang.NET.Extensions.Stock.Tests](../tests/FormuLang.NET.Extensions.Stock.Tests) |
 
 Update the revision and this document every time the library is synced with a newer revision of the standard (see [Development](development.md)).
 
@@ -17,10 +17,10 @@ Legend: ✅ conforms · 🟡 partial / deviates · ❌ not implemented
 
 | Stage | Status | Notes |
 | :---- | :----: | :---- |
-| [Pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md) | ✅ | `Context.Create` / `PreExecute` copy only the missing environment variables. |
-| [Validation](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/validation.md) | ✅ | Environment checks and the formula scan, with the error messages of the standard. |
-| [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | ✅ | |
-| [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | ✅ | |
+| [Pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md) | ✅ | `Context.Create` / `PreExecute` copy only the missing environment variables, and set `NOW` once (from `Environment.TimeProvider`, or the `NOW` constant pinned with `Environment.SetNow`). |
+| [Validation](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/validation.md) | ✅ | Environment checks (including `NOW` and `time_offset`) and the formula scan with the **Scoped comment** mode and Unicode text characters, with the error messages of the standard. Columns count code points. |
+| [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | ✅ | Scoped comments `<# ... #>` become one space, or one new line if they contain a line break. |
+| [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | ✅ | Unicode characters are accepted only in the Text mode. |
 | [Parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/parsing.md) | ✅ | See [Implementation choices](#implementation-choices) I8. |
 | [Evaluation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md) | ✅ | |
 | [Finalization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/finalization.md) | ✅ | `ExecutionResult`. |
@@ -33,12 +33,14 @@ Legend: ✅ conforms · 🟡 partial / deviates · ❌ not implemented
 | [Errors](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/README.md) | ✅ | All 13 errors with the standard codes and names. |
 | [Types](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/README.md) | ✅ | |
 | [Serialization](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/serialization.md) | ✅ | `SerializationOptions`: `decimal_place`, `split_array`, `split_object`, `include_object_class`, `max_array_preview`, read from the environment variables of the execution (`TEXT`, `JOIN`, `ExecutionResult.ToString()`). |
-| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `core-0.3`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors` and the serialization variables. |
-| [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/context.md#context-types) | ✅ | `Context` (Default Context) and `IterationContext` (`I`, `N`, `PREV`), run with `Executor.ExecuteIterations`. `I` is computed when it is read (`ComputedConstant`). |
+| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `core-1.0`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NOW`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors`, `time_offset` and the serialization variables. |
+| [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/context.md#context-types) | ✅ | `Context` (Default Context), `IterationContext` (`I`, `N`, `PREV`; run with `Executor.ExecuteIterations`) and `TimeContext` (`TIME_S`, `TIME_MS`, `DTIME_S`, `DTIME_MS`, `FRAME`, `PREV`; run with `Executor.CreateFrameRunner` or `ExecuteFrames`). `I` and `FRAME` are computed when they are read (`ComputedConstant`). `NOW` is the same in all iterations and is set again for every frame. |
+| [Text](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/Text.md#characters) | ✅ | A character is one Unicode code point (`LEN`, `SUBSTR`, `FIND`, `REVERSE`, `SPLIT(text, "")`); `SORT` compares code points; `UPPERCASE` / `LOWERCASE` are invariant. Texts are not normalized. |
+| [Comments](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/operators.md#1-formula-and-line-structure) | ✅ | Line comments `#` and scoped comments `<# ... #>`. |
 | [Inheritance](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/inheritance.md) of extended types | ✅ | |
 | [Argument templates](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/argument_template.md) and overloads | ✅ | Including element types (`Array<Number>`) and the error propagation rules. |
 | [Procedures](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/procedures/README.md) | ✅ | `SET`, `INIT`, `COND_SET`, `REQUIRE`, also without parentheses. |
-| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/functions/README.md) | ✅ | All 82 functions, tested with the examples of their documents. |
+| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/functions/README.md) | ✅ | All 93 functions, including `FORMAT` and the time functions (`YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `HOUR`, `MINUTE`, `SECOND`, `MILLISECOND`, `DATE`, `FORMAT_TIME`; years `1` - `9999`), tested with the examples of their documents. |
 | Lambda functions | ✅ | |
 | [Operators](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/operators.md) | ✅ | |
 
@@ -46,11 +48,11 @@ Legend: ✅ conforms · 🟡 partial / deviates · ❌ not implemented
 
 | Area | Status | Notes |
 | :--- | :----: | :---- |
-| [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md#context-structure) | ✅ | `StockContext`, `IndicatorContext`, `PatternContext`, `StrategyContext`, derived from `IterationContext`. Expected results are checked by `StockExecutor.ExecuteIndicator`, `ExecutePattern` and `ExecuteStrategy` (strategy signals are clamped). |
-| [Indicator registry](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md#2-indicator-registry) | ✅ | `IndicatorRegistry`, held by the `INDICATOR` function of the environment (`RegisterStock`, `GetIndicatorRegistry`). |
+| [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md#context-structure) | ✅ | `StockContext`, `IndicatorContext`, `PatternContext` (with `PARAMETERS`), `StrategyContext`, derived from `IterationContext`. Expected results are checked by `StockExecutor.ExecuteIndicator`, `ExecutePattern`, `ExecutePatternSeries` and `ExecuteStrategy` (strategy signals are clamped). |
+| [Formula registry](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/README.md#2-formula-registry) | ✅ | `FormulaRegistry` with the parts `Indicators` and `Patterns` (identifiers unique within a part), held by the `LOAD_INDICATOR` and `LOAD_PATTERN` functions of the environment (`RegisterStock`, `GetFormulaRegistry`). |
 | [`Stock.Candle`](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/types/Candle.md) | ✅ | `Candle` record; invalid candles of the host are rejected with `ArgumentException`. |
-| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/functions/README.md) | ✅ | `CANDLE`, `INDICATOR`. `INDICATOR` stores every computed series (key: identifier, completed parameters, source), as allowed by its *Performance* section. |
-| [Examples](https://github.com/Adisoreq/FormuLang/tree/main/docs/standards/stock/examples) | ✅ | SMA, EMA, MACD, bullish engulfing, moving average crossover, MACD signal strength. |
+| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/stock/functions/README.md) | ✅ | `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`. Both loaders store every computed series (key: identifier, completed parameters and, for indicators, the source), as allowed by their *Performance* sections. A child context uses the `NOW` of its caller. |
+| [Examples](https://github.com/Adisoreq/FormuLang/tree/main/docs/standards/stock/examples) | ✅ | SMA, EMA, MACD, bullish engulfing, moving average crossover, MACD signal strength, pattern confirmed by a trend. |
 
 ## Known deviations
 
@@ -58,6 +60,7 @@ Remove an item when it is fixed and covered by a test.
 
 | # | Deviation | Standard |
 | :-: | :-------- | :------- |
+| D3 | Conformance case `core.syntax.unicode.011` expects one error for `$zółw = 1`, but step 3.3 of the validation algorithm appends a `SYNTAX_ERROR` for every invalid symbol, so the library reports two (`ó` at column 3 and `ł` at column 4). The library follows the algorithm; the case is listed in `ConformanceTests.KnownDeviations` until the standard is clarified. | [validation.md § Validation algorithm](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/validation.md), [tests/core/syntax/text_unicode.json](https://github.com/Adisoreq/FormuLang/blob/main/tests/core/syntax/text_unicode.json) |
 | D2 | The primitive map holds the classified expressions; the values computed during evaluation are kept per node of the current queue instead of being written into the map. The order of evaluation and the results are the same. | [evaluation.md § Result propagation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md#4-result-propagation) |
 
 ## Implementation choices
@@ -77,6 +80,8 @@ Places where the standard leaves room for interpretation, and what the library d
 | I9 | An identifier without a sigil that names a function (`MAP($a, ABS)`, `TEXT(AVG)`). | It is a Delegate of that function. Constants are checked first. |
 | I10 | The README of the standard calls a lambda stored in a variable as `$square(5)`, but Core parsing gives `(` an infix role only after an identifier. | Not supported (syntax error), following Core parsing. A lambda is invoked by the function it is passed to. |
 | I11 | `NUMBER(text)`: the standard does not say whether a sign is allowed (`NUMBER("-5")`). | A leading `+` or `-` is accepted. |
+| I13 | `NOW` is an environment constant set in the pre-execution, but an environment can be shared by many executions. | The value is stored as a constant of the context (`Context.Now`), which shadows the constant of the environment, so concurrent executions do not change the environment. |
+| I14 | A placeholder selector of `FORMAT` that is a whole number with a sign (`{-1}`). | It is an index (and results in `INVALID_INDEX_ERROR` unless `@array_indexing` allows it). |
 | I12 | Lambda body scope: the standard does not say whether a body can read context variables. | It can (`MAP($arr, (e) => e - AVG($arr))` from the [common formulas](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/examples/common_formulas.md) needs it), and it can read the parameters of enclosing lambdas. |
 | I13 | Choice of the context type. | The host application chooses and creates the context ([pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md), step 1); a formula cannot select it. A context type is a class derived from `Context` that loads its constants in `Context.LoadContextData()`. `ContextType` (in Abstractions) is the context *kind*: disposable or persistent. |
 | I14 | `PREV` after an iteration that resulted in an Error, when the host continues ([context.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/context.md#2-iteration-context)). | `null`. `ExecuteIterations(..., stopOnError: false)` continues; the default stops at the first Error. |

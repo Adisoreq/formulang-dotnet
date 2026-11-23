@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Interfaces of FormuLang.NET, the .NET implementation of the FormuLang formula language: primitives, functions, operators, execution pipeline stages and structures. Reference it to replace a stage of the pipeline or to write an extension.</Description>
   </PropertyGroup>
 
 </Project>

@@ -1,0 +1,53 @@
+name: Release
+
+# Publishes the NuGet packages when a version tag is pushed, e.g. `git tag v1.0.0 && git push origin v1.0.0`.
+# Requires the repository secret NUGET_API_KEY (an API key of nuget.org with the "Push" scope for FormuLang.NET.*).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: nuget
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Check the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(dotnet msbuild src/FormuLang.NET.Core -getProperty:Version)"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::The tag $GITHUB_REF_NAME does not match <Version>$version</Version> of Directory.Build.props."
+            exit 1
+          fi
+
+      - name: Build
+        run: dotnet build FormuLang.NET.sln -c Release
+
+      - name: Test
+        run: dotnet test FormuLang.NET.sln -c Release --no-build
+
+      - name: Pack
+        run: |
+          dotnet pack src/FormuLang.NET.Abstractions -c Release --no-build -o artifacts
+          dotnet pack src/FormuLang.NET.Core -c Release --no-build -o artifacts
+          dotnet pack src/FormuLang.NET.Extensions.Stock -c Release --no-build -o artifacts
+
+      - name: Push to nuget.org
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/* --title "FormuLang.NET $GITHUB_REF_NAME" --notes "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)."

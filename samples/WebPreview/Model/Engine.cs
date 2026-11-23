@@ -4,7 +4,7 @@ using FormuLang.NET.Core.Processing;
 using FormuLang.NET.Core.Structures;
 using FormuLang.NET.Extensions.Stock;
 using FormuLang.NET.Extensions.Stock.Contexts;
-using FormuLang.NET.Extensions.Stock.Indicators;
+using FormuLang.NET.Extensions.Stock.Registry;
 using FlEnvironment = FormuLang.NET.Core.Structures.Environment;
 using FlObject = FormuLang.NET.Core.Primitives.Object;
 
@@ -12,6 +12,9 @@ namespace WebPreview.Model
 {
     /// <summary>An indicator of the preview with its current formula.</summary>
     public sealed record IndicatorSetup(IndicatorDraft Config, string Formula);
+
+    /// <summary>A pattern of the preview with its current formula.</summary>
+    public sealed record PatternSetup(PatternDraft Config, string Formula);
 
     /// <summary>Problems found before the evaluation: every validation error, and the canonical form of every sequence.</summary>
     /// <param name="Sequences">Canonical form of every sequence, e.g. <c>SET($x,ADD(1,2))</c>; empty if the formula does not parse.</param>
@@ -33,6 +36,9 @@ namespace WebPreview.Model
 
     /// <param name="Indices">Indices of the candles where the pattern ends.</param>
     public sealed record PatternRun(IReadOnlyList<int> Indices, IError? Error) : Run;
+
+    /// <summary>The frames of a Time Context, executed by the output of the preview while it plays.</summary>
+    public sealed record TimeRun(TimeSession Session) : Run;
 
     /// <param name="Id">Key of the strategy in the preview.</param>
     public sealed record StrategySetup(string Id, string Formula);
@@ -58,28 +64,30 @@ namespace WebPreview.Model
         private static readonly Executor Executor = Executor.Create();
 
         /// <summary>
-        /// An environment with the Core and Stock standards. Every indicator of the preview with a valid definition is in
-        /// the registry, with its current formula and the default values of its parameters, so <c>INDICATOR("SMA")</c>
-        /// works in every Stock formula.
+        /// An environment with the Core and Stock standards. Every indicator and pattern of the preview with a valid
+        /// definition is in the formula registry, with its current formula and the default values of its parameters,
+        /// so <c>LOAD_INDICATOR("SMA")</c> and <c>LOAD_PATTERN("ENGULFING")</c> work in every Stock formula.
         /// </summary>
-        public static FlEnvironment CreateEnvironment(IReadOnlyList<IndicatorSetup>? indicators = null)
+        public static FlEnvironment CreateEnvironment(IReadOnlyList<IndicatorSetup>? indicators = null, IReadOnlyList<PatternSetup>? patterns = null)
         {
             var environment = FlEnvironment.Create();
-            IndicatorRegistry registry = environment.RegisterStock().Registry;
+            FormulaRegistry registry = environment.RegisterStock().Registry;
+
             indicators ??= [];
-            var drafts = indicators.Select(i => i.Config).ToList();
+            var indicatorDrafts = indicators.Select(i => i.Config).ToList();
+            foreach (var (config, formula) in indicators.Where(i => i.Config.Problems(indicatorDrafts).Count == 0))
+                registry.Indicators.Add(config.IndicatorId, formula, DefinitionParameters(config.Parameters));
 
-            foreach (var (config, formula) in indicators)
-            {
-                if (config.Problems(drafts).Count > 0)
-                    continue;
-
-                registry.Add(config.IndicatorId, formula,
-                    config.Parameters.Select(p => new IndicatorParameter(p.Id, p.DefaultValue)).ToArray());
-            }
+            patterns ??= [];
+            var patternDrafts = patterns.Select(p => p.Config).ToList();
+            foreach (var (config, formula) in patterns.Where(p => p.Config.Problems(patternDrafts).Count == 0))
+                registry.Patterns.Add(config.PatternId, formula, DefinitionParameters(config.Parameters));
 
             return environment;
         }
+
+        private static FormulaParameter[] DefinitionParameters(IEnumerable<IndicatorParameterDraft> parameters)
+            => parameters.Select(p => new FormulaParameter(p.Id, p.DefaultValue)).ToArray();
 
         /// <summary>The environment used for the suggestions and the highlighting of the editor.</summary>
         public static readonly FlEnvironment ReferenceEnvironment = CreateEnvironment();
@@ -174,20 +182,27 @@ namespace WebPreview.Model
         }
 
         /// <summary><c>PARAMETERS</c> of the Indicator Context: the values of the parameters set in the preview.</summary>
-        private static FlObject ParametersOf(IndicatorSetup setup)
+        private static FlObject ParametersOf(IndicatorSetup setup) => ParametersOf(setup.Config.Parameters);
+
+        private static FlObject ParametersOf(IEnumerable<IndicatorParameterDraft> drafts)
         {
             var parameters = new FlObject();
-            foreach (IndicatorParameterDraft p in setup.Config.Parameters)
+            foreach (IndicatorParameterDraft p in drafts.DistinctBy(p => p.Id))
                 parameters.InitVariable(p.Id, Value.Number(p.Value, Names.Number(p.Value)));
             return parameters;
         }
 
-        public static PatternRun RunPattern(string formula, IReadOnlyList<ChartCandle> candles, FlEnvironment environment)
+        /// <summary>Runs a pattern formula with <c>PARAMETERS</c> = the values of the parameters set in the preview.</summary>
+        public static PatternRun RunPattern(PatternSetup setup, IReadOnlyList<ChartCandle> candles, FlEnvironment environment)
         {
-            var context = PatternContext.Create(environment, ToCandles(candles), Executor);
-            PatternResult result = Executor.ExecutePattern(formula, context);
+            var context = PatternContext.Create(environment, ToCandles(candles), Executor, ParametersOf(setup.Config.Parameters));
+            PatternResult result = Executor.ExecutePattern(setup.Formula, context);
             return new PatternRun(result.Indices, result.Successful ? null : result.Error);
         }
+
+        /// <summary>Prepares the frames of a Time Context; the output of the preview executes them as time passes.</summary>
+        public static TimeRun RunTime(string formula, FlEnvironment environment)
+            => new(new TimeSession(Executor.CreateFrameRunner(formula, TimeContext.Create(environment))));
 
         public static StrategyRun RunStrategies(IReadOnlyList<StrategySetup> setups, IReadOnlyList<ChartCandle> candles, FlEnvironment environment)
         {

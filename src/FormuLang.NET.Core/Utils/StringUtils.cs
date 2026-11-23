@@ -1,11 +1,61 @@
-﻿namespace FormuLang.NET.Core.Utils
+﻿using System.Text;
+
+namespace FormuLang.NET.Core.Utils
 {
     /// <summary>
     /// Character classification of the FormuLang standard (docs/syntax/symbols.md).
-    /// The standard allows only ASCII characters, so these checks are ASCII-only on purpose.
+    /// The code of a formula allows only ASCII characters, so these checks are ASCII-only on purpose; text literals
+    /// allow every Unicode text character (<see cref="IsTextCharacter"/>).
     /// </summary>
     internal static class StringUtils
     {
+        /// <summary>
+        /// Text character (docs/syntax/symbols.md, "Text characters"): every Unicode scalar value except the control
+        /// characters U+0000 - U+001F and U+007F - U+009F. [Tab] is allowed.
+        /// </summary>
+        public static bool IsTextCharacter(int codePoint)
+            => codePoint == '\t' || (codePoint >= 0x20 && codePoint < 0x7F) || (codePoint > 0x9F && Rune.IsValid(codePoint));
+
+        /// <summary>
+        /// Splits a text into its characters: Unicode code points (docs/standards/core/types/Text.md, "Characters").
+        /// </summary>
+        public static string[] CodePoints(string text)
+        {
+            var result = new List<string>(text.Length);
+            foreach (Rune rune in text.EnumerateRunes())
+                result.Add(rune.ToString());
+            return [.. result];
+        }
+
+        /// <summary>
+        /// Number of characters (Unicode code points) of a text.
+        /// </summary>
+        public static int CodePointLength(string text)
+        {
+            int count = 0;
+            foreach (Rune _ in text.EnumerateRunes())
+                count++;
+            return count;
+        }
+
+        /// <summary>
+        /// Compares texts by their code points (ordinal UTF-16 comparison orders surrogate pairs differently).
+        /// </summary>
+        public static int CompareCodePoints(string a, string b)
+        {
+            StringRuneEnumerator x = a.EnumerateRunes(), y = b.EnumerateRunes();
+
+            while (true)
+            {
+                bool hasX = x.MoveNext(), hasY = y.MoveNext();
+                if (!hasX || !hasY)
+                    return hasX.CompareTo(hasY);
+
+                int compare = x.Current.Value.CompareTo(y.Current.Value);
+                if (compare != 0)
+                    return compare;
+            }
+        }
         /// <summary>
         /// [Tab], [New line], [Space] and the printable ASCII characters 33-126.
         /// </summary>

@@ -2,7 +2,7 @@ using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Core.Primitives;
 using FormuLang.NET.Core.Processing;
 using FormuLang.NET.Extensions.Stock.Contexts;
-using FormuLang.NET.Extensions.Stock.Indicators;
+using FormuLang.NET.Extensions.Stock.Registry;
 using Env = FormuLang.NET.Core.Structures.Environment;
 
 namespace FormuLang.NET.Extensions.Stock.Tests
@@ -39,31 +39,31 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             """;
 
         private const string Macd = """
-            $short = INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
-            $long = INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
+            $short = LOAD_INDICATOR("EMA", { period: PARAMETERS.short_period }, SOURCE)
+            $long = LOAD_INDICATOR("EMA", { period: PARAMETERS.long_period }, SOURCE)
 
             # MACD line for every candle: the two series joined element by element
             $line = MAP($short, (s, i) => IF(OR(ISNULL(s), ISNULL($long[i])), null, s - $long[i]))
 
             $macd = $line[I]
-            $signal = INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
+            $signal = LOAD_INDICATOR("EMA", { period: PARAMETERS.signal_period }, $line)[I]
 
             IF(OR(ISNULL($macd), ISNULL($signal)),
                null,
                { macd: $macd, signal: $signal, histogram: $macd - $signal })
             """;
 
-        private static Env CreateEnvironment(out IndicatorRegistry registry)
+        private static Env CreateEnvironment(out FormulaRegistry registry)
         {
             var env = Env.Create();
             registry = env.RegisterStock().Registry;
 
-            registry.Add("SMA", Sma, new IndicatorParameter("period", 14));
-            registry.Add("EMA", Ema, new IndicatorParameter("period", 14));
-            registry.Add("MACD", Macd,
-                new IndicatorParameter("short_period", 12),
-                new IndicatorParameter("long_period", 26),
-                new IndicatorParameter("signal_period", 9));
+            registry.Indicators.Add("SMA", Sma, new FormulaParameter("period", 14));
+            registry.Indicators.Add("EMA", Ema, new FormulaParameter("period", 14));
+            registry.Indicators.Add("MACD", Macd,
+                new FormulaParameter("short_period", 12),
+                new FormulaParameter("long_period", 26),
+                new FormulaParameter("signal_period", 9));
 
             return env;
         }
@@ -104,17 +104,17 @@ namespace FormuLang.NET.Extensions.Stock.Tests
         {
             var env = CreateEnvironment();
 
-            Assert.True(env.Supports("stock-0.1"));
-            Assert.Equal("[\"core-0.3\", \"stock-0.1\"]", env.GetProperty("STANDARDS").GetValue().ToString());
+            Assert.True(env.Supports("stock-1.0"));
+            Assert.Equal("[\"core-1.0\", \"stock-1.0\"]", env.GetProperty("STANDARDS").GetValue().ToString());
             Assert.Contains("Stock.Candle", env.ExtendedTypes);
             Assert.NotNull(env.GetFunction("CANDLE"));
-            Assert.NotNull(env.GetIndicatorRegistry());
+            Assert.NotNull(env.GetFormulaRegistry());
             Assert.True(StockStandard.IsCoreSupported(env));
         }
 
         [Theory]
-        [InlineData("REQUIRE \"stock-0.1\"\nREQUIRE \"core-0.2+\"\n1", "1")]
-        [InlineData("REQUIRE \"stock-0.x\"\nCLOSE[I] - OPEN[I]", "0")]
+        [InlineData("REQUIRE \"stock-1.0\"\nREQUIRE \"core-1+\"\n1", "1")]
+        [InlineData("REQUIRE \"stock-1.x\"\nCLOSE[I] - OPEN[I]", "0")]
         public void Require(string formula, string expected) => AssertResult(formula, expected);
 
         // Stock Context
@@ -177,30 +177,30 @@ namespace FormuLang.NET.Extensions.Stock.Tests
         // INDICATOR
 
         [Theory]
-        [InlineData("INDICATOR(\"SMA\", { period: 3 })", "[null, null, 2, 3, 4]")]
-        [InlineData("INDICATOR(\"SMA\", { period: 2 }, [10, 20, 30, 40, 50])", "[null, 15, 25, 35, 45]")]
-        [InlineData("INDICATOR(\"SMA\", { period: 3 })[I]", "4")]
-        [InlineData("INDICATOR(\"XYZ\")", "INVALID_KEY_ERROR")]
-        [InlineData("INDICATOR(\"SMA\", { length: 3 })", "INVALID_KEY_ERROR")]
-        [InlineData("INDICATOR(\"SMA\", { period: 3 }, [1, 2])", "OPERATION_ERROR")]
-        [InlineData("INDICATOR(\"SMA\", { period: 3 }, [1, 2, \"3\", 4, 5])", "OPERATION_ERROR")]
-        [InlineData("INDICATOR(\"SMA\", { period: 2 }, [1, null, 3, 4, 5])", "[null, null, null, 3.5, 4.5]")]
-        [InlineData("INDICATOR(\"SMA\")", "[null, null, null, null, null]")]
-        [InlineData("INDICATOR(\"EMA\", { period: 3 })", "[null, null, 2, 3, 4]")]
-        [InlineData("INDICATOR(1)", "ARGUMENT_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 3 })", "[null, null, 2, 3, 4]")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 2 }, [10, 20, 30, 40, 50])", "[null, 15, 25, 35, 45]")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 3 })[I]", "4")]
+        [InlineData("LOAD_INDICATOR(\"XYZ\")", "INVALID_KEY_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { length: 3 })", "INVALID_KEY_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 3 }, [1, 2])", "OPERATION_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 3 }, [1, 2, \"3\", 4, 5])", "OPERATION_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"SMA\", { period: 2 }, [1, null, 3, 4, 5])", "[null, null, null, 3.5, 4.5]")]
+        [InlineData("LOAD_INDICATOR(\"SMA\")", "[null, null, null, null, null]")]
+        [InlineData("LOAD_INDICATOR(\"EMA\", { period: 3 })", "[null, null, 2, 3, 4]")]
+        [InlineData("LOAD_INDICATOR(1)", "ARGUMENT_ERROR")]
         public void Indicator_Examples(string formula, string expected) => AssertResult(formula, expected);
 
         [Fact]
         public void Indicator_EnvironmentVariablesOfTheCallerAreNotPassed()
         {
-            Assert.Equal("[null, null, 2, 3, 4]", RunLast("@array_indexing = 1\nINDICATOR(\"SMA\", { period: 3 })"));
-            Assert.Equal("4", RunLast("@array_indexing = 1\nINDICATOR(\"SMA\", { period: 3 })[I]"));
+            Assert.Equal("[null, null, 2, 3, 4]", RunLast("@array_indexing = 1\nLOAD_INDICATOR(\"SMA\", { period: 3 })"));
+            Assert.Equal("4", RunLast("@array_indexing = 1\nLOAD_INDICATOR(\"SMA\", { period: 3 })[I]"));
         }
 
         [Fact]
         public void Indicator_OutsideOfAStockContext()
         {
-            var result = Executor.Create().Execute("INDICATOR(\"SMA\")", CreateEnvironment());
+            var result = Executor.Create().Execute("LOAD_INDICATOR(\"SMA\")", CreateEnvironment());
             Assert.Equal("OPERATION_ERROR", result.Error.Name);
         }
 
@@ -208,12 +208,12 @@ namespace FormuLang.NET.Extensions.Stock.Tests
         public void Indicator_ThatCallsItself()
         {
             var env = CreateEnvironment(out var registry);
-            registry.Add("LOOP", "INDICATOR(\"LOOP\")[I]");
-            registry.Add("A", "INDICATOR(\"B\")[I]");
-            registry.Add("B", "INDICATOR(\"A\")[I]");
+            registry.Indicators.Add("LOOP", "LOAD_INDICATOR(\"LOOP\")[I]");
+            registry.Indicators.Add("A", "LOAD_INDICATOR(\"B\")[I]");
+            registry.Indicators.Add("B", "LOAD_INDICATOR(\"A\")[I]");
 
-            Assert.StartsWith("[OPERATION_ERROR (3)] Indicator \"LOOP\" calls itself.", RunLast("INDICATOR(\"LOOP\")", env: env));
-            Assert.StartsWith("[OPERATION_ERROR (3)] Indicator \"A\" calls itself.", RunLast("INDICATOR(\"A\")", env: env));
+            Assert.StartsWith("[OPERATION_ERROR (3)] Indicator \"LOOP\" calls itself.", RunLast("LOAD_INDICATOR(\"LOOP\")", env: env));
+            Assert.StartsWith("[OPERATION_ERROR (3)] Indicator \"A\" calls itself.", RunLast("LOAD_INDICATOR(\"A\")", env: env));
         }
 
         [Theory]
@@ -225,18 +225,18 @@ namespace FormuLang.NET.Extensions.Stock.Tests
         public void Indicator_ResultThatIsNotAllowed(string formula)
         {
             var env = CreateEnvironment(out var registry);
-            registry.Add("BAD", formula);
+            registry.Indicators.Add("BAD", formula);
 
-            Assert.StartsWith("[OPERATION_ERROR (3)] Iteration", RunLast("INDICATOR(\"BAD\")", env: env));
+            Assert.StartsWith("[OPERATION_ERROR (3)] Iteration", RunLast("LOAD_INDICATOR(\"BAD\")", env: env));
         }
 
         [Fact]
         public void Indicator_ErrorOfAnIterationIsReturned()
         {
             var env = CreateEnvironment(out var registry);
-            registry.Add("FAIL", "IF(I == 2, ERROR(\"broken\"), I)");
+            registry.Indicators.Add("FAIL", "IF(I == 2, ERROR(\"broken\"), I)");
 
-            Assert.Equal("[CUSTOM_ERROR (1)] broken", RunLast("INDICATOR(\"FAIL\")", env: env));
+            Assert.Equal("[CUSTOM_ERROR (1)] broken", RunLast("LOAD_INDICATOR(\"FAIL\")", env: env));
         }
 
         [Fact]
@@ -262,7 +262,7 @@ namespace FormuLang.NET.Extensions.Stock.Tests
         [Fact]
         public void Indicator_MacdUsage()
         {
-            const string formula = "$macd = INDICATOR(\"MACD\", { short_period: 2, long_period: 3, signal_period: 2 })[I]\nIF(ISNULL($macd), null, ROUND($macd.histogram, 6))";
+            const string formula = "$macd = LOAD_INDICATOR(\"MACD\", { short_period: 2, long_period: 3, signal_period: 2 })[I]\nIF(ISNULL($macd), null, ROUND($macd.histogram, 6))";
             var context = StockContext.Create(CreateEnvironment(), OneToFive);
 
             var result = Executor.Create().ExecuteIterations(formula, context);
@@ -291,8 +291,8 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             """;
 
         private const string Crossover = """
-            $fast = INDICATOR("SMA", { period: 10 })
-            $slow = INDICATOR("SMA", { period: 40 })
+            $fast = LOAD_INDICATOR("SMA", { period: 10 })
+            $slow = LOAD_INDICATOR("SMA", { period: 40 })
 
             $p = MAX(I - 1, @array_indexing)
             $fast_prev = $fast[$p]
@@ -312,7 +312,7 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             """;
 
         private const string MacdStrength = """
-            $macd = INDICATOR("MACD")[I]
+            $macd = LOAD_INDICATOR("MACD")[I]
 
             IF(ISNULL($macd),
                NEUTRAL,
@@ -385,6 +385,145 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             StrategyResult result = Executor.Create().ExecuteStrategy("I - 2 + BUY * 0 + SELL * 0 + NEUTRAL", context);
 
             Assert.Equal([-1, -1, 0, 1, 1], result.Signals);
+        }
+
+        // stock-1.0: IS_BULLISH, IS_BEARISH, LOAD_PATTERN and the patterns of the formula registry
+
+        /// <summary>
+        /// Open -> close: 10 -> 12, 12 -> 11, 10.5 -> 13 (bullish engulfing), 13 -> 14.
+        /// </summary>
+        private static readonly Candle[] Engulfing =
+        [
+            new(10, 12.5, 9.5, 12), new(12, 12.5, 10.8, 11), new(10.5, 13.2, 10.4, 13), new(13, 14.5, 12.9, 14),
+        ];
+
+        // docs/standards/stock/examples/strategy_examples.md, "Bullish engulfing pattern"
+        private const string EngulfingPattern = """
+            $prev = CANDLES[MAX(I - 1, @array_indexing)]
+            $curr = CANDLES[I]
+            $covers = AND($curr.open <= $prev.close, $curr.close >= $prev.open)
+            AND(I > @array_indexing, AND(IS_BEARISH($prev), AND(IS_BULLISH($curr), $covers)))
+            """;
+
+        private static Env CreatePatternEnvironment()
+        {
+            Env env = CreateEnvironment(out FormulaRegistry registry);
+            registry.Patterns.Add("ENGULFING", EngulfingPattern);
+            registry.Patterns.Add("BIG_BODY", "ABS(CLOSE[I] - OPEN[I]) >= PARAMETERS.min_body", new FormulaParameter("min_body", 2));
+            registry.Patterns.Add("SMA", "true"); // the same identifier as an indicator, in the other part of the registry
+            registry.Patterns.Add("LOOP", "LOAD_PATTERN(\"LOOP\")[I]");
+            registry.Patterns.Add("NUMBER", "1");
+            return env;
+        }
+
+        private static string[] RunAll(string formula, Env env, Candle[] candles)
+        {
+            var context = StockContext.Create(env, candles);
+            return Executor.Create().ExecuteIterations(formula, context, stopOnError: false).Results.Select(r => r.ToString()).ToArray();
+        }
+
+        [Theory]
+        [InlineData("IS_BULLISH(CANDLE({ open: 10, high: 12, low: 9, close: 11 }))", "true")]
+        [InlineData("IS_BULLISH(CANDLE({ open: 11, high: 12, low: 9, close: 10 }))", "false")]
+        [InlineData("IS_BULLISH(CANDLE({ open: 10, high: 12, low: 9, close: 10 }))", "false")]
+        [InlineData("IS_BEARISH(CANDLE({ open: 10, high: 12, low: 9, close: 11 }))", "false")]
+        [InlineData("IS_BEARISH(CANDLE({ open: 11, high: 12, low: 9, close: 10 }))", "true")]
+        [InlineData("IS_BEARISH(CANDLE({ open: 10, high: 12, low: 9, close: 10 }))", "false")]
+        [InlineData("IS_BULLISH({ open: 10, close: 11 })", "ARGUMENT_ERROR")]
+        [InlineData("IS_BEARISH(1)", "ARGUMENT_ERROR")]
+        public void IsBullishAndIsBearish(string formula, string expected) => AssertResult(formula, expected);
+
+        [Fact]
+        public void IsBullish_OfTheCurrentCandle()
+            => Assert.Equal(["true", "false", "true", "true"], RunAll("IS_BULLISH(CANDLES[I])", CreateEnvironment(), Engulfing));
+
+        [Fact]
+        public void LoadPattern_ReturnsTheWholeSeries()
+        {
+            Env env = CreatePatternEnvironment();
+
+            Assert.Equal("[false, false, true, false]", RunAll("LOAD_PATTERN(\"ENGULFING\")", env, Engulfing)[0]);
+            Assert.Equal("true", RunAll("LOAD_PATTERN(\"ENGULFING\")[I]", env, Engulfing)[2]);
+            Assert.Equal("1", RunAll("LEN(FILTER(LOAD_PATTERN(\"ENGULFING\"), (e) => e))", env, Engulfing)[0]);
+        }
+
+        [Fact]
+        public void LoadPattern_CompletesTheParameters()
+        {
+            Env env = CreatePatternEnvironment();
+
+            Assert.Equal(["true", "false", "true", "false"], RunAll("LOAD_PATTERN(\"BIG_BODY\")[I]", env, Engulfing));
+            Assert.Equal(["true", "true", "true", "true"], RunAll("LOAD_PATTERN(\"BIG_BODY\", { min_body: 1 })[I]", env, Engulfing));
+        }
+
+        [Theory]
+        [InlineData("LOAD_PATTERN(\"XYZ\")", "INVALID_KEY_ERROR")]
+        [InlineData("LOAD_PATTERN(\"ENGULFING\", { length: 3 })", "INVALID_KEY_ERROR")]
+        [InlineData("LOAD_PATTERN(\"LOOP\")", "OPERATION_ERROR")]
+        [InlineData("LOAD_PATTERN(\"NUMBER\")", "OPERATION_ERROR")]
+        [InlineData("LOAD_INDICATOR(\"ENGULFING\")", "INVALID_KEY_ERROR")]
+        public void LoadPattern_Errors(string formula, string expected)
+            => Assert.StartsWith($"[{expected} (", RunAll(formula, CreatePatternEnvironment(), Engulfing)[0]);
+
+        [Fact]
+        public void LoadPattern_IndicatorsAndPatternsAreSeparateParts()
+        {
+            Env env = CreatePatternEnvironment();
+
+            Assert.Equal("[true, true, true, true]", RunAll("LOAD_PATTERN(\"SMA\")", env, Engulfing)[0]);
+            Assert.Equal("[null, 11.5, 12, 13.5]", RunAll("LOAD_INDICATOR(\"SMA\", { period: 2 })", env, Engulfing)[0]);
+        }
+
+        [Fact]
+        public void LoadPattern_OutsideOfAStockContext()
+            => Assert.StartsWith("[OPERATION_ERROR (", Executor.Create().Execute("LOAD_PATTERN(\"ENGULFING\")", CreatePatternEnvironment()).ToString());
+
+        [Fact]
+        public void LoadPattern_InAStrategy()
+        {
+            var context = StrategyContext.Create(CreatePatternEnvironment(), Engulfing);
+            StrategyResult result = Executor.Create().ExecuteStrategy("IF(LOAD_PATTERN(\"ENGULFING\")[I], BUY, NEUTRAL)", context);
+
+            Assert.Equal([0, 0, 1, 0], result.Signals);
+        }
+
+        [Fact]
+        public void PatternContext_HasParameters()
+        {
+            var context = PatternContext.Create(CreateEnvironment(), Engulfing, parameters: Params(("min_body", 2)));
+            PatternResult result = Executor.Create().ExecutePattern("ABS(CLOSE[I] - OPEN[I]) >= PARAMETERS.min_body", context);
+
+            Assert.Equal([0, 2], result.Indices);
+            Assert.Equal("{ }", Executor.Create().ExecuteIterations("PARAMETERS", PatternContext.Create(CreateEnvironment(), Engulfing)).Results[0].ToString());
+        }
+
+        [Fact]
+        public void ComputePattern_FromTheHost()
+        {
+            var context = StockContext.Create(CreatePatternEnvironment(), Engulfing);
+            Assert.Equal("[false, false, true, false]", context.ComputePattern("ENGULFING").ToString());
+        }
+
+        [Fact]
+        public void Registry_IdentifiersAreUniqueWithinAPart()
+        {
+            var registry = new FormulaRegistry();
+            registry.Indicators.Add("A", "1");
+            registry.Patterns.Add("A", "true");
+
+            Assert.Throws<InvalidOperationException>(() => registry.Patterns.Add("A", "false"));
+        }
+
+        [Fact]
+        public void ChildContext_UsesTheNowOfTheCaller()
+        {
+            Env env = CreateEnvironment(out FormulaRegistry registry);
+            registry.Indicators.Add("CLOCK", "NOW");
+
+            var context = StockContext.Create(env, OneToFive);
+            IterationExecutionResult result = Executor.Create().ExecuteIterations("ALL(LOAD_INDICATOR(\"CLOCK\"), (t) => t == NOW)", context);
+
+            Assert.All(result.Results, r => Assert.Equal("true", r.ToString()));
         }
 
         // Helpers

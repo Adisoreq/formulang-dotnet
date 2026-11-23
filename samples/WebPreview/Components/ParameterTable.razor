@@ -1,0 +1,71 @@
+@inherits StateComponent
+
+@* Parameters of a definition of the registry (an indicator or a pattern): id, name and default value. *@
+<section class="editor-section">
+    <header>
+        <span class="field-label">Parameters</span>
+        <code class="muted">PARAMETERS.&lt;id&gt;</code>
+        <button type="button" class="ghost" @onclick="() => Set(() => Parameters.Add(Registry.NewParameter(Parameters)))">
+            + Add parameter
+        </button>
+    </header>
+    @if (Parameters.Count > 0)
+    {
+        <table class="series-table edit-table">
+            <thead>
+                <tr>
+                    <th>Id</th>
+                    <th>Name</th>
+                    <th>Default value</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (IndicatorParameterDraft parameter in Parameters)
+                {
+                    <tr>
+                        <td>
+                            <input type="text" class="mono" value="@parameter.Id" aria-label="Parameter id"
+                                   @oninput="e => Set(() => parameter.Id = Text(e))" />
+                        </td>
+                        <td>
+                            <input type="text" value="@parameter.Name" aria-label="Parameter name"
+                                   @oninput="e => Set(() => parameter.Name = Text(e))" />
+                        </td>
+                        <td>
+                            <input type="number" value="@Names.Number(parameter.DefaultValue)" aria-label="Default value"
+                                   @oninput="e => Set(() => parameter.DefaultValue = Names.Parse(e.Value))" />
+                        </td>
+                        <td>
+                            <button type="button" class="remove" title="Remove the parameter" aria-label="Remove parameter @parameter.Id"
+                                    @onclick="() => Set(() => Parameters.Remove(parameter))">
+                                ×
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="empty">The @Kind has no parameters.</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public List<IndicatorParameterDraft> Parameters { get; set; } = default!;
+
+    /// <summary>"indicator" or "pattern".</summary>
+    [Parameter, EditorRequired]
+    public string Kind { get; set; } = "";
+
+    private static string Text(ChangeEventArgs e) => e.Value?.ToString() ?? "";
+
+    private void Set(Action change)
+    {
+        change();
+        State.Notify();
+    }
+}

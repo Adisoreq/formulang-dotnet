@@ -26,6 +26,9 @@ namespace WebPreview.Model
 
         public int IterationCount { get; set; } = 8;
 
+        /// <summary>Frames per second of the Time Context.</summary>
+        public int FramesPerSecond { get; set; } = 20;
+
         public int CandleCount { get; private set; } = 160;
 
         public int Seed { get; private set; } = 20251;

@@ -1,34 +1,37 @@
 # Getting started
 
-> [!IMPORTANT]
-> FormuLang.NET is in the prototyping stage. The API can change in any `0.x` version.
+> [!NOTE]
+> FormuLang.NET `1.x` implements the standards `core-1.0` and `stock-1.0`. Within `1.x` the public API changes only in a backward-compatible way.
 
 ## Requirements
 
 - [.NET SDK 8.0](https://dotnet.microsoft.com/download) or newer.
 
-## Building
+## Installation
 
 ```bash
-git clone https://github.com/Adisoreq/FormuLang.NET.git
+dotnet add package FormuLang.NET.Core
+```
+
+For the Stock standard (candles, indicators, patterns, strategies):
+
+```bash
+dotnet add package FormuLang.NET.Extensions.Stock
+```
+
+## Building from source
+
+```bash
+git clone https://github.com/Adisoreq/formulang-dotnet.git
 ```
 
 ```bash
 dotnet build FormuLang.NET.sln
 ```
 
-The library is not published on NuGet yet. To use it in your project, add project references:
-
-```xml
-<ItemGroup>
-  <ProjectReference Include="..\FormuLang.NET\src\FormuLang.NET.Abstractions\FormuLang.NET.Abstractions.csproj" />
-  <ProjectReference Include="..\FormuLang.NET\src\FormuLang.NET.Core\FormuLang.NET.Core.csproj" />
-</ItemGroup>
-```
-
 ## CalculatorCLI
 
-[CalculatorCLI](../samples/CalculatorCLI) executes a formula in a basic Core environment and prints the result, or the error that stopped the execution.
+[CalculatorCLI](../samples/CalculatorCLI) executes a formula in a Core environment with the Stock standard (`CANDLE`, `IS_BULLISH`, `IS_BEARISH`) and prints the result, or the error that stopped the execution. Text literals may contain Unicode characters.
 
 ```bash
 dotnet run --project samples/CalculatorCLI -- "2 + 2 * 2"
@@ -38,11 +41,13 @@ dotnet run --project samples/CalculatorCLI -- "2 + 2 * 2"
 dotnet run --project samples/CalculatorCLI -- -f samples/CalculatorCLI/examples/statistics.fl
 ```
 
+More examples: [time.fl](../samples/CalculatorCLI/examples/time.fl) (time functions), [text.fl](../samples/CalculatorCLI/examples/text.fl) (Unicode texts and `FORMAT`), [candles.fl](../samples/CalculatorCLI/examples/candles.fl) (candles and scoped comments).
+
 Without arguments it starts an interactive mode: type a formula (it may have several lines) and press Enter on an empty line to execute it. A formula can also be piped through the standard input. The exit code is `0` on success and `1` when the execution was aborted by an error.
 
 ## WebPreview
 
-[WebPreview](../samples/WebPreview) is a Blazor WebAssembly editor that executes formulas of the Core and Stock standards in the browser, in every context type, with a candlestick chart for the Stock contexts.
+[WebPreview](../samples/WebPreview) is a Blazor WebAssembly editor that executes formulas of the Core and Stock standards in the browser, in every context type: frames played as time passes for the Time Context, and a candlestick chart for the Stock contexts.
 
 ```bash
 dotnet run --project samples/WebPreview
@@ -141,6 +146,33 @@ for (int i = 0; i < close.Length; i++)
 ```
 
 A formula that uses `CLOSE` in a basic Core context results in `UNKNOWN_SYMBOL_ERROR`. To check the supported standards at the start of a formula, use `REQUIRE`.
+
+### Iteration and Time Context
+
+The Core standard defines two context types for formulas executed many times. `Executor` parses the formula once and evaluates it for every iteration or frame:
+
+```csharp
+// Iteration Context: I, N, PREV
+var powers = executor.ExecuteIterations("IF(ISNULL(PREV), 1, PREV * 2)", IterationContext.Create(environment, 5));
+// 1, 2, 4, 8, 16
+
+// Time Context: TIME_S, TIME_MS, DTIME_S, DTIME_MS, FRAME, PREV; the host decides when the next frame starts
+FrameRunner runner = executor.CreateFrameRunner("MIN(IF(ISNULL(PREV), 0, PREV) + 5 * DTIME_S, 100)", TimeContext.Create(environment));
+runner.NextFrame(0);      // 0
+runner.NextFrame(0.5);    // 2.5 (DTIME_S = 0.5)
+runner.NextFrame(1.25);   // 6.25
+```
+
+### Time
+
+`NOW` is the current time (Unix time in milliseconds, UTC), read once in the pre-execution of every execution from `Environment.TimeProvider` (`TimeProvider.System` by default). For deterministic results, pin it:
+
+```csharp
+environment.SetNow(1795431080123);                     // 2026-11-23 10:51:20.123 UTC
+executor.Execute("FORMAT_TIME(NOW, \"YYYY-MM-DD hh:mm\")", environment).Value;   // "2026-11-23 10:51"
+```
+
+The time functions use the local time given by the `@time_offset` environment variable, in minutes from UTC (default `0`).
 
 ## Custom functions
 

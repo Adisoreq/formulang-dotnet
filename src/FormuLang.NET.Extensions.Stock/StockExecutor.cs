@@ -117,6 +117,24 @@ namespace FormuLang.NET.Extensions.Stock
         }
 
         /// <summary>
+        /// Executes a pattern formula for every candle and returns its whole series, as <c>LOAD_PATTERN</c> does
+        /// (docs/standards/stock/functions/LOAD_PATTERN.md).
+        /// </summary>
+        /// <returns>
+        /// An Array of <c>N</c> Booleans; the Error of an iteration; or <c>OPERATION_ERROR</c> if an iteration returns a
+        /// value that is not a Boolean.
+        /// </returns>
+        public static IValue ExecutePatternSeries(this Executor executor, string formula, PatternContext context)
+        {
+            PatternResult result = executor.ExecutePattern(formula, context, stopOnError: true);
+
+            if (!result.Successful)
+                return Value.Error(result.Error, "");
+
+            return Value.Array(result.Iterations.Values, "");
+        }
+
+        /// <summary>
         /// Executes a strategy formula for every candle (Strategy Context). Signals outside of the range from
         /// <c>SELL</c> to <c>BUY</c> are clamped.
         /// </summary>
