@@ -11,7 +11,7 @@
     <RepositoryUrl>https://github.com/Adisoreq/formulang-dotnet</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
-    <LangVersion>latest</LangVersion>
+    <!-- No LangVersion: the C# version follows the target framework (C# 12 for net8.0), whatever SDK builds it -->
     <Deterministic>true</Deterministic>
 
     <!-- Only the projects in src/ are packages -->

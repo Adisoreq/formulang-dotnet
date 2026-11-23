@@ -93,8 +93,8 @@ namespace FormuLang.NET.Core.Standards
                 ? OperationError("\"search\" is an empty text.")
                 : T(Txt(a[0]).Replace(Txt(a[1]), Txt(a[2]), StringComparison.Ordinal)), TextArg("text"), TextArg("search"), TextArg("replacement"))),
             Fn("REVERSE",
-                Overload((a, _) => A(Arr(a[0]).Reverse()), ArrayArg("array")),
-                Overload((a, _) => T(string.Concat(StringUtils.CodePoints(Txt(a[0])).Reverse())), TextArg("text"))),
+                Overload((a, _) => A(Enumerable.Reverse(Arr(a[0]))), ArrayArg("array")),
+                Overload((a, _) => T(string.Concat(Enumerable.Reverse(StringUtils.CodePoints(Txt(a[0]))))), TextArg("text"))),
             FormatFunction(),
 
             // 5. Arrays and collections
