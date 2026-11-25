@@ -16,13 +16,13 @@
     pwsh scripts/sync-conformance.ps1 -Standard D:\src\FormuLang
 #>
 param(
-    [string] $Standard = (Join-Path $PSScriptRoot '..' '..' 'FormuLang')
+    [string] $Standard = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'FormuLang')
 )
 
 $ErrorActionPreference = 'Stop'
 
 $source = Join-Path $Standard 'tests'
-$target = Join-Path $PSScriptRoot '..' 'tests' 'FormuLang.NET.Conformance.Tests' 'conformance'
+$target = [IO.Path]::Combine((Split-Path $PSScriptRoot -Parent), 'tests', 'FormuLang.NET.Conformance.Tests', 'conformance')
 
 if (-not (Test-Path (Join-Path $source 'schema.json'))) {
     throw "No conformance tests found in '$source'. Pass the path of the standard repository with -Standard."

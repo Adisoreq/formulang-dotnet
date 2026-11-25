@@ -18,9 +18,11 @@
 .EXAMPLE
     pwsh scripts/pack.ps1
     pwsh scripts/pack.ps1 -SkipTests -Output D:\packages
+
+    Works in PowerShell 7 (pwsh) and in Windows PowerShell 5.1.
 #>
 param(
-    [string] $Output = (Join-Path $PSScriptRoot '..' 'artifacts'),
+    [string] $Output = (Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts'),
     [switch] $SkipTests
 )
 
@@ -63,7 +65,7 @@ if (Test-Path $Output) {
 $Output = Resolve-Path $Output
 
 foreach ($project in $projects) {
-    Invoke-Step "Pack $project" { dotnet pack (Join-Path $root 'src' $project) -c Release --no-build --nologo -o $Output }
+    Invoke-Step "Pack $project" { dotnet pack (Join-Path (Join-Path $root 'src') $project) -c Release --no-build --nologo -o $Output }
 }
 
 Write-Host "`nPackages in ${Output}:" -ForegroundColor Green
