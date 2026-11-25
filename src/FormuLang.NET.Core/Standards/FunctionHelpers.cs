@@ -14,7 +14,8 @@ namespace FormuLang.NET.Core.Standards
     {
         // Definitions
 
-        public static Function Fn(string name, params FunctionOverload[] overloads) => new(name, overloads);
+        // Every Core function only computes its result (procedures are defined separately)
+        public static Function Fn(string name, params FunctionOverload[] overloads) => new(name, overloads) { SideEffectFree = true };
 
         public static FunctionOverload Overload(FunctionImplementation implementation, params ArgumentTemplate[] template)
             => new(template.Cast<IArgumentTemplate>(), implementation);
@@ -55,7 +56,7 @@ namespace FormuLang.NET.Core.Standards
             if (value == 0)
                 value = 0;
 
-            return Value.Number(value, StringConverter.NumberToString(value));
+            return Value.Number(value);
         }
 
         public static IValue B(bool value) => Value.Boolean(value, value ? "true" : "false");

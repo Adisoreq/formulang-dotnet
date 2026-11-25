@@ -259,6 +259,29 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             }
         }
 
+        // LOAD_INDICATOR.md, "Performance": a source built again in every iteration has the same elements, so the series
+        // is computed once and reused; a source with other elements gives another series
+        [Fact]
+        public void Indicator_SourceBuiltInEveryIteration_IsReusedByItsElements()
+        {
+            var env = CreateEnvironment(out FormulaRegistry registry);
+            int runs = 0;
+            env.RegisterFunction(new FormuLang.NET.Core.Functions.Function("RUNS",
+                [new FormuLang.NET.Core.Functions.FunctionOverload([], (_, _) => { runs++; return Value.Number(0, "0"); })]));
+            registry.Indicators.Add("COUNTED", "RUNS() + SOURCE[I]");
+
+            var context = StockContext.Create(env, OneToFive);
+            var result = Executor.Create().ExecuteIterations(
+                """
+                $a = LOAD_INDICATOR("COUNTED", { }, MAP(CLOSE, (c) => c * 2))[I]
+                $b = LOAD_INDICATOR("COUNTED", { }, MAP(CLOSE, (c) => c * 3))[I]
+                $a + $b
+                """, context);
+
+            Assert.Equal(["5", "10", "15", "20", "25"], result.Values.Select(v => v.ToString()));
+            Assert.Equal(2 * OneToFive.Length, runs);   // two series of N iterations, not one per caller iteration
+        }
+
         [Fact]
         public void Indicator_MacdUsage()
         {

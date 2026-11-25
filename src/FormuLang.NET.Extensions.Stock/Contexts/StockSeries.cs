@@ -62,15 +62,71 @@ namespace FormuLang.NET.Extensions.Stock.Contexts
 
         public void Store(string key, IValue series) => _stored[key] = series;
 
+        private readonly ConditionalWeakTable<IValue[], object> _validSources = new();
+
         /// <summary>
-        /// Key of an indicator source: <c>CLOSE</c> itself, or the serialized elements.
+        /// Whether every element of a source is a Number or <c>null</c>. The check runs once for every array
+        /// (<c>CLOSE</c> never), not in every iteration of the caller.
         /// </summary>
+        public bool IsValidSource(IValue[] source)
+        {
+            if (ReferenceEquals(source, Close.Raw) || _validSources.TryGetValue(source, out _))
+                return true;
+
+            if (source.Any(e => e.Type.Base != Types.NumberName && e.Type.Base != Types.NullName))
+                return false;
+
+            _validSources.AddOrUpdate(source, source);
+            return true;
+        }
+
+        /// <summary>
+        /// Key of an indicator source: <c>CLOSE</c> itself, or a key of the elements. Sources with the same elements get the
+        /// same key, also when the formula builds a new array in every iteration (e.g. with <c>MAP</c>).
+        /// </summary>
+        /// <remarks>
+        /// The elements are compared as numbers instead of being serialized to text, which made the key cost more than
+        /// the rest of a <c>LOAD_INDICATOR</c> call.
+        /// </remarks>
         public string SourceKey(IValue[] source)
         {
             if (ReferenceEquals(source, Close.Raw))
                 return "CLOSE";
 
-            return _sourceKeys.GetValue(source, s => StringConverter.ArrayToString(s));
+            return _sourceKeys.GetValue(source, ContentKey);
+        }
+
+        private readonly Dictionary<int, List<(double?[] Elements, string Key)>> _contents = [];
+        private int _sourceCount;
+
+        /// <summary>
+        /// Elements of a source: Numbers and <c>null</c> values (checked by the caller).
+        /// </summary>
+        private string ContentKey(IValue[] source)
+        {
+            var elements = new double?[source.Length];
+            var hash = new HashCode();
+
+            for (int i = 0; i < source.Length; i++)
+            {
+                elements[i] = source[i].Raw as double?;
+                hash.Add(elements[i]);
+            }
+
+            int code = hash.ToHashCode();
+
+            if (!_contents.TryGetValue(code, out var candidates))
+                _contents[code] = candidates = [];
+
+            foreach (var (known, key) in candidates)
+            {
+                if (known.SequenceEqual(elements))
+                    return key;
+            }
+
+            string created = $"SOURCE#{_sourceCount++}";
+            candidates.Add((elements, created));
+            return created;
         }
     }
 }

@@ -14,6 +14,14 @@ namespace FormuLang.NET.Core.Functions
         public FunctionType FunctionType { get; }
         public IEnumerable<IFunctionOverload> Overloads { get; }
 
+        /// <summary>
+        /// The function only computes its result from its arguments: it changes nothing in the context, the environment
+        /// or the host application, so skipping a call whose result is discarded changes nothing either. The evaluator
+        /// then skips the branch of <c>IF</c> that is not selected (docs/standards/core/functions/IF.md). <c>false</c>
+        /// by default, e.g. for a function of the host application that records diagnostics.
+        /// </summary>
+        public bool SideEffectFree { get; init; }
+
         public Function(string name, FunctionType functionType, IEnumerable<IFunctionOverload> overloads)
             : base(PrimitiveType.Function, Types.Delegate, name)
         {

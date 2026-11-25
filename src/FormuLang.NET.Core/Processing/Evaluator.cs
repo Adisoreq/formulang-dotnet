@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using FormuLang.NET.Abstractions.Functions;
 using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Abstractions.Processing;
@@ -65,6 +66,9 @@ namespace FormuLang.NET.Core.Processing
         {
             var results = new Dictionary<ExpressionNode, IValue>(ReferenceEqualityComparer.Instance);
 
+            if (SkipsBranches(sequence, scope.Context.Environment))
+                return EvaluateSelected(sequence.Root, sequence, results, scope, isFormulaSequence);
+
             foreach (ExpressionNode node in sequence.Queue)
             {
                 bool declaration = isFormulaSequence && node == sequence.Root;
@@ -72,6 +76,127 @@ namespace FormuLang.NET.Core.Processing
             }
 
             return results[sequence.Root];
+        }
+
+        // Skipping the branch of IF that is not selected (an optimization with the same result)
+        //
+        // IF receives both branches computed (docs/standards/core/functions/IF.md), so a branch that is not selected is
+        // computed only for its side effects, and its value (even an Error) is discarded. In a sequence where every
+        // function is side-effect free, the branch has no effects either, so it can be skipped, and the order of the
+        // nodes cannot change a result. Only these sequences are evaluated top-down; the others follow the queue.
+
+        private static readonly ConditionalWeakTable<Sequence, Tuple<IEnvironment, bool>> BranchAnalyses = new();
+
+        /// <summary>
+        /// Whether <paramref name="sequence"/> has an <c>IF</c> and only side-effect-free functions, apart from an
+        /// assignment at its root (e.g. <c>$x = IF(...)</c>). The result is stored for every sequence and environment.
+        /// </summary>
+        private static bool SkipsBranches(Sequence sequence, IEnvironment environment)
+        {
+            if (BranchAnalyses.TryGetValue(sequence, out var known) && ReferenceEquals(known.Item1, environment))
+                return known.Item2;
+
+            bool hasIf = false;
+            bool pure;
+
+            if (sequence.Root is CallNode root && environment.GetFunction(root.Name) is Procedure { TakesVariable: true }
+                && root.Children.Count > 0 && root.Children[0] is VariableNode)
+            {
+                pure = root.Children.Skip(1).All(child => IsSideEffectFree(child, environment, ref hasIf));
+            }
+            else
+            {
+                pure = IsSideEffectFree(sequence.Root, environment, ref hasIf);
+            }
+
+            bool result = pure && hasIf;
+            BranchAnalyses.AddOrUpdate(sequence, Tuple.Create(environment, result));
+            return result;
+        }
+
+        private static bool IsSideEffectFree(ExpressionNode node, IEnvironment environment, ref bool hasIf)
+        {
+            switch (node)
+            {
+                case LiteralNode or VariableNode or ConstantNode or ParameterNode:
+                    return true;
+
+                case LambdaNode lambda:
+                    return IsSideEffectFree(lambda.Body.Root, environment, ref hasIf);
+
+                case CallNode call:
+                    if (environment.GetFunction(call.Name) is not Function { SideEffectFree: true } function || function is Procedure)
+                        return false;
+
+                    if (call.Name == IfName)
+                        hasIf = true;
+
+                    for (int i = 0; i < call.Children.Count; i++)
+                    {
+                        ExpressionNode child = call.Children[i];
+
+                        // A delegate argument is invoked by the function: it must be a lambda (checked as a node) or a
+                        // side-effect-free named function, not a delegate from a variable whose body is not known here
+                        if (TakesDelegate(function, i) && !IsKnownDelegate(child, environment))
+                            return false;
+
+                        if (!IsSideEffectFree(child, environment, ref hasIf))
+                            return false;
+                    }
+
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private const string IfName = "IF";
+
+        private static bool TakesDelegate(Function function, int position)
+            => function.Overloads.Any(o => o.Template.ElementAtOrDefault(position)?.Type.Base == Types.DelegateName
+                || (o.Template.LastOrDefault() is { Multiple: true } last && position >= o.Template.Count() - 1
+                    && last.Type.Base == Types.DelegateName));
+
+        private static bool IsKnownDelegate(ExpressionNode node, IEnvironment environment) => node switch
+        {
+            LambdaNode => true,
+            ConstantNode constant => environment.GetFunction(constant.Name) is null or Function { SideEffectFree: true },
+            LiteralNode => true,
+            _ => false,
+        };
+
+        /// <summary>
+        /// Evaluates a node after its children, top-down, and only the selected branch of an <c>IF</c> whose condition is
+        /// a Boolean. A condition of another type goes to <c>IF</c> with both branches, as in the queue.
+        /// </summary>
+        private IValue EvaluateSelected(ExpressionNode node, Sequence sequence, Dictionary<ExpressionNode, IValue> results,
+            Scope scope, bool isFormulaSequence)
+        {
+            if (results.TryGetValue(node, out IValue? known))
+                return known;
+
+            IValue value;
+
+            if (node is CallNode { Name: IfName, Children.Count: 3 } call)
+            {
+                IValue condition = EvaluateSelected(call.Children[0], sequence, results, scope, isFormulaSequence);
+
+                if (condition.Type.Base == Types.BooleanName)
+                {
+                    // IF(true, then, else) returns then, IF(false, then, else) returns else, unchanged
+                    value = EvaluateSelected(condition.Raw is true ? call.Children[1] : call.Children[2], sequence, results, scope, isFormulaSequence);
+                    results[node] = value;
+                    return value;
+                }
+            }
+
+            foreach (ExpressionNode child in node.Children)
+                EvaluateSelected(child, sequence, results, scope, isFormulaSequence);
+
+            value = EvaluateNode(node, results, scope, isFormulaSequence && node == sequence.Root);
+            results[node] = value;
+            return value;
         }
 
         private IValue EvaluateNode(ExpressionNode node, Dictionary<ExpressionNode, IValue> results, Scope scope, bool isRoot)

@@ -30,7 +30,7 @@ namespace FormuLang.NET.Extensions.Stock
                 Stock.Candle.TryFromObject((IObject)a[0].Raw!, out Candle candle)
                     ? candle.ToValue()
                     : OperationError($"Object does not meet the requirements to be <{Stock.Candle.TypeName}>.")),
-        ]);
+        ]) { SideEffectFree = true };
 
         /// <summary>
         /// <c>IS_BULLISH(candle)</c>: <c>close &gt; open</c> (docs/standards/stock/functions/IS_BULLISH.md).
@@ -64,7 +64,7 @@ namespace FormuLang.NET.Extensions.Stock
                 bool result = check(open, close);
                 return Value.Boolean(result, result ? "true" : "false");
             }),
-        ]);
+        ]) { SideEffectFree = true };
 
         internal static IValue OperationError(string message) => Value.Error(Errors.OperationError(message), "");
 
@@ -146,6 +146,8 @@ namespace FormuLang.NET.Extensions.Stock
         internal LoadIndicatorFunction(FormulaRegistry registry)
             : base(StockFunctions.LoadIndicatorName, CreateOverloads(registry))
         {
+            // Computing a series changes nothing for the caller; the stored series are only reused
+            SideEffectFree = true;
             Registry = registry;
         }
 
@@ -179,7 +181,7 @@ namespace FormuLang.NET.Extensions.Stock
             if (elements.Length != series.Count)
                 return StockFunctions.OperationError($"The source has {elements.Length} elements, but there are {series.Count} candles.");
 
-            if (elements.Any(e => e.Type.Base != Types.NumberName && e.Type.Base != Types.NullName))
+            if (!series.IsValidSource(elements))
                 return StockFunctions.OperationError("Every element of the source must be a Number or null.");
 
             string key = $"indicator|{id}|{StockFunctions.ParametersKey(parametersValue)}|{series.SourceKey(elements)}";
@@ -212,6 +214,8 @@ namespace FormuLang.NET.Extensions.Stock
         internal LoadPatternFunction(FormulaRegistry registry)
             : base(StockFunctions.LoadPatternName, CreateOverloads(registry))
         {
+            // Computing a series changes nothing for the caller; the stored series are only reused
+            SideEffectFree = true;
             Registry = registry;
         }
 

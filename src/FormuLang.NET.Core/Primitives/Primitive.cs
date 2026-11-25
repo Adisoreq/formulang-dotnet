@@ -6,14 +6,29 @@ namespace FormuLang.NET.Core.Primitives
     {
         public PrimitiveType PrimitiveType { get; protected set; }
         public IType Type { get; protected set; }
-        public string Expression { get; protected set; } = string.Empty;
+        private string? _expression;
 
-        protected Primitive(PrimitiveType primitiveType, IType type, string expression)
+        /// <summary>
+        /// Text of the expression of the primitive. A primitive created without one (<c>null</c>) gets it from
+        /// <see cref="FormatExpression"/> when it is first read.
+        /// </summary>
+        public string Expression
+        {
+            get => _expression ??= FormatExpression();
+            protected set => _expression = value;
+        }
+
+        protected Primitive(PrimitiveType primitiveType, IType type, string? expression)
         {
             this.PrimitiveType = primitiveType;
             this.Type = type;
-            this.Expression = expression;
+            _expression = expression;
         }
+
+        /// <summary>
+        /// The expression of a primitive created without one.
+        /// </summary>
+        protected virtual string FormatExpression() => string.Empty;
 
         public abstract bool CanAccessValue { get; }
         public abstract IError CanUpdateValue { get; }

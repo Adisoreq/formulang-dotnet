@@ -50,11 +50,7 @@ namespace FormuLang.NET.Core.Structures
         /// </summary>
         public void PreExecute()
         {
-            if (!_contextDataLoaded)
-            {
-                _contextDataLoaded = true;
-                LoadContextData();
-            }
+            EnsureContextData();
 
             // Step 2: NOW is set once for the whole execution
             if (RefreshesNowOnPreExecute || !HasKey(Structures.Environment.NowConstant))
@@ -75,6 +71,19 @@ namespace FormuLang.NET.Core.Structures
         /// The basic Core context has no data of its own.
         /// </summary>
         protected virtual void LoadContextData() { }
+
+        /// <summary>
+        /// Loads the data of the context type (<see cref="LoadContextData"/>) if it is not loaded yet, without the rest
+        /// of the pre-execution. Used before the first iteration or frame, which runs the full pre-execution later.
+        /// </summary>
+        protected void EnsureContextData()
+        {
+            if (_contextDataLoaded)
+                return;
+
+            _contextDataLoaded = true;
+            LoadContextData();
+        }
 
         /// <summary>
         /// Whether every <see cref="PreExecute"/> sets <c>NOW</c> to the current time. The Default Context does; the
@@ -112,13 +121,45 @@ namespace FormuLang.NET.Core.Structures
         /// Removes every context variable and every copy of an environment variable; context constants are kept.
         /// The next <see cref="PreExecute"/> copies the environment variables again.
         /// </summary>
+        /// <remarks>
+        /// Runs before every iteration or frame, so it avoids work in the common case: a copy of an environment variable
+        /// that the formula did not change still holds the value of the environment and is kept, and a changed copy gets
+        /// the value of the environment back. The result is the same as removing every copy and copying them again.
+        /// </remarks>
         protected void ClearVariables()
         {
-            foreach (string key in Keys.Where(k => GetProperty(k).ContainerType == ContainerType.Variable).ToArray())
-                RemoveProperty(key);
+            List<string>? variables = null;
 
-            foreach (string key in _environmentVariables.Keys.ToArray())
-                _environmentVariables.RemoveProperty(key);
+            foreach (KeyValuePair<string, Primitives.Container> property in _properties)
+            {
+                if (property.Value.ContainerType == ContainerType.Variable)
+                    (variables ??= []).Add(property.Key);
+            }
+
+            if (variables != null)
+            {
+                foreach (string key in variables)
+                    RemoveProperty(key);
+            }
+
+            List<string>? removed = null;
+
+            foreach (string key in _environmentVariables.Keys)
+            {
+                IContainer copy = _environmentVariables.GetProperty(key);
+                IContainer? original = Environment.HasKey(key) ? Environment.GetProperty(key) : null;
+
+                if (original == null || original.ContainerType != ContainerType.Variable)
+                    (removed ??= []).Add(key);
+                else if (!ReferenceEquals(copy.GetValue(), original.GetValue()))
+                    _environmentVariables.SetContainer(new Primitives.Variable(key, original.GetValue()));
+            }
+
+            if (removed != null)
+            {
+                foreach (string key in removed)
+                    _environmentVariables.RemoveProperty(key);
+            }
         }
 
         /// <summary>

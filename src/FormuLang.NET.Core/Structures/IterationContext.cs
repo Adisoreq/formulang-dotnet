@@ -63,8 +63,10 @@ namespace FormuLang.NET.Core.Structures
             SetConstant(CountConstant, Value.Number(Count, CountConstant));
             SetContainer(new ComputedConstant(IterationConstant, Types.Number,
                 () => Value.Number(Iteration + FunctionHelpers.ArrayIndexing(this), IterationConstant)));
-            SetConstant(PreviousConstant, Previous);
+            SetContainer(_previous = new ReplaceableConstant(PreviousConstant, Previous));
         }
+
+        private ReplaceableConstant? _previous;
 
         /// <summary>
         /// Prepares the iteration with the 0-based <paramref name="iteration"/> index: removes the context variables and
@@ -76,7 +78,7 @@ namespace FormuLang.NET.Core.Structures
             ArgumentOutOfRangeException.ThrowIfNegative(iteration);
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(iteration, Math.Max(Count, 1));
 
-            PreExecute(); // loads the context constants before the first iteration
+            EnsureContextData(); // loads the context constants before the first iteration
             ClearVariables();
 
             if (iteration == 0)
@@ -84,9 +86,21 @@ namespace FormuLang.NET.Core.Structures
 
             Iteration = iteration;
             Previous = previous == null || previous.Type.Base == Types.ErrorName ? Value.Null(PreviousConstant) : previous;
-            SetConstant(PreviousConstant, Previous);
+            SetPrevious(Previous);
 
             PreExecute();
+        }
+
+        /// <summary>
+        /// Stores <c>PREV</c> in the container created by <see cref="LoadContextData"/>; a new constant only if the
+        /// property was replaced from outside.
+        /// </summary>
+        private void SetPrevious(IValue previous)
+        {
+            if (_previous != null && HasKey(PreviousConstant) && ReferenceEquals(GetProperty(PreviousConstant), _previous))
+                _previous.Replace(previous);
+            else
+                SetConstant(PreviousConstant, previous);
         }
     }
 }

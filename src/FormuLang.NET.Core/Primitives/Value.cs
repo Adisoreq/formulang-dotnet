@@ -14,6 +14,17 @@ namespace FormuLang.NET.Core.Primitives
             this.Raw = value;
         }
 
+        private Value(double number)
+            : base(PrimitiveType.Value, Types.Number, null)
+        {
+            this.Raw = number;
+        }
+
+        /// <summary>
+        /// The serialized number, for a value created by <see cref="Number(double)"/>.
+        /// </summary>
+        protected override string FormatExpression() => Raw is double number ? StringConverter.NumberToString(number) : string.Empty;
+
         public override bool CanAccessValue => true;
 
         public override IError CanUpdateValue => Errors.Success();
@@ -90,6 +101,12 @@ namespace FormuLang.NET.Core.Primitives
 
         public static Value Number(double number, string expression)
             => new Value(number, Types.Number, expression);
+
+        /// <summary>
+        /// A Number whose expression is the serialized number. It is formatted when it is first read: most numbers
+        /// computed by a formula are never shown, and formatting every one of them was a large part of the execution time.
+        /// </summary>
+        public static Value Number(double number) => new(number);
 
         public static Value Text(string text, string expression)
             => new Value(text, Types.Text, expression);

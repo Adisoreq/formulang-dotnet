@@ -194,6 +194,14 @@ executor.Execute("HYPOT(3, 4)", environment).Value;               // 5
 
 The arguments are matched against the overloads in order. If none matches, the call returns the leftmost **Error** argument, or an `ARGUMENT_ERROR` value, and the implementation is not called.
 
+A function that only computes its result from its arguments, and changes nothing in the context or in the host application, can be marked with `SideEffectFree = true`:
+
+```csharp
+var hypot = new Function("HYPOT", [/* overloads */]) { SideEffectFree = true };
+```
+
+`IF` receives both branches computed (the Core standard), so the branch that is not selected is computed only for its side effects. In a sequence where every function is side-effect free, the evaluator skips that branch, which gives the same result much faster, e.g. in an indicator that computes its first value differently: `IF(ISNULL(PREV), AVG(...), PREV + ...)`. All Core and Stock functions are side-effect free. A function that is not marked (the default), e.g. one that records diagnostics in the host application, is always called, and so is every function in the same sequence.
+
 An extension standard implements `IStandard` and is registered with `environment.RegisterStandard(standard)`, which adds its identifier to `STANDARDS`, its extended types and its functions.
 
 ## Running single stages

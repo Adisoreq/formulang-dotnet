@@ -10,6 +10,20 @@ All notable changes of **FormuLang.NET**. The format is based on [Keep a Changel
 
 ## [Unreleased]
 
+Faster execution of formulas run for every candle or element (Iteration Context); the results are the same.
+
+### Added
+
+- `Function.SideEffectFree`: a function that only computes its result. All Core and Stock functions are side-effect free; functions of the host application are not, unless they set it.
+- `Value.Number(double)`: a Number whose expression is formatted when it is first read.
+
+### Changed
+
+- The evaluator skips the branch of `IF` that is not selected when every function of the sequence (or of the value of an assignment, e.g. `$x = IF(...)`) is side-effect free and the condition is a **Boolean**. The selected value and the errors are the same as with both branches computed; a function with side effects, a procedure or a delegate from a variable keeps the computation of both branches. An indicator such as RSI or EMA with a first value computed by `IF(ISNULL(PREV), ...)` runs about 2.5-4 times faster.
+- `IterationContext.BeginIteration` runs the pre-execution once instead of twice, keeps the copies of the environment variables that the formula did not change, and reuses the `PREV` constant: about 40% less work per iteration.
+- `LOAD_INDICATOR` checks the elements of a source once for every array (never for `CLOSE`) instead of in every call, and compares the elements of a source as numbers instead of serializing them to text, to find a series that is already computed (e.g. a source built with `MAP` in every iteration).
+- A Number result of a Core function gets its expression (the serialized number) when it is first read, not when it is created (`Value.Number(double)`).
+
 ## [1.0.1] - 2026-11-23
 
 Supported standards: `core-1.0`, `stock-1.0`. The behavior of the library is the same as in `1.0.0`.

@@ -94,7 +94,7 @@ namespace FormuLang.NET.Core.Structures
             if (frame > 0 && timeSeconds < TimeSeconds)
                 throw new ArgumentOutOfRangeException(nameof(timeSeconds), "The time of a frame never decreases.");
 
-            PreExecute(); // loads the context constants before the first frame
+            EnsureContextData(); // loads the context constants before the first frame
             ClearVariables();
 
             Frame = frame;
