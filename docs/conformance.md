@@ -4,10 +4,10 @@ Status of the implementation against the FormuLang standard.
 
 | | |
 | :-- | :-- |
-| **Target standards** | Core `core-1.0`, Stock `stock-1.0` |
+| **Target standards** | Core `core-1.1`, Stock `stock-1.1` (backward compatible with `core-1.0` and `stock-1.0`) |
 | **Standard revision checked** | [`Adisoreq/FormuLang@c40e08a`](https://github.com/Adisoreq/FormuLang/tree/c40e08a) (2026-11-23) |
 | **Last review** | 2026-11-23 |
-| **Conformance tests** | [tests/FormuLang.NET.Conformance.Tests](../tests/FormuLang.NET.Conformance.Tests) (the JSON test cases of the standard: 138 of 139 pass, see [D3](#known-deviations)), [tests/FormuLang.NET.Core.Tests](../tests/FormuLang.NET.Core.Tests), [tests/FormuLang.NET.Extensions.Stock.Tests](../tests/FormuLang.NET.Extensions.Stock.Tests) |
+| **Conformance tests** | [tests/FormuLang.NET.Conformance.Tests](../tests/FormuLang.NET.Conformance.Tests) (the JSON test cases of the standard: all 203 pass; the cases of `core-1.0` and `stock-1.0` run too), [tests/FormuLang.NET.Core.Tests](../tests/FormuLang.NET.Core.Tests), [tests/FormuLang.NET.Extensions.Stock.Tests](../tests/FormuLang.NET.Extensions.Stock.Tests) |
 
 Update the revision and this document every time the library is synced with a newer revision of the standard (see [Development](development.md)).
 
@@ -33,15 +33,15 @@ Legend: ✅ conforms · 🟡 partial / deviates · ❌ not implemented
 | [Errors](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/errors/README.md) | ✅ | All 13 errors with the standard codes and names. |
 | [Types](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/README.md) | ✅ | |
 | [Serialization](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/serialization.md) | ✅ | `SerializationOptions`: `decimal_place`, `split_array`, `split_object`, `include_object_class`, `max_array_preview`, read from the environment variables of the execution (`TEXT`, `JOIN`, `ExecutionResult.ToString()`). |
-| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `core-1.0`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NOW`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors`, `time_offset` and the serialization variables. |
+| [Environment](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md#environment-structure) | ✅ | `STANDARDS` is `["core-1.0", "core-1.1"]`, constants `STANDARDS`, `E`, `PI`, `PHI`, `NOW`, `NULL`, `TRUE`, `FALSE`, variables `array_indexing`, `suppress_errors`, `time_offset` and the serialization variables. |
 | [Context types](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/context.md#context-types) | ✅ | `Context` (Default Context), `IterationContext` (`I`, `N`, `PREV`; run with `Executor.ExecuteIterations`) and `TimeContext` (`TIME_S`, `TIME_MS`, `DTIME_S`, `DTIME_MS`, `FRAME`, `PREV`; run with `Executor.CreateFrameRunner` or `ExecuteFrames`). `I` and `FRAME` are computed when they are read (`ComputedConstant`). `NOW` is the same in all iterations and is set again for every frame. |
 | [Text](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/types/Text.md#characters) | ✅ | A character is one Unicode code point (`LEN`, `SUBSTR`, `FIND`, `REVERSE`, `SPLIT(text, "")`); `SORT` compares code points; `UPPERCASE` / `LOWERCASE` are invariant. Texts are not normalized. |
 | [Comments](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/operators.md#1-formula-and-line-structure) | ✅ | Line comments `#` and scoped comments `<# ... #>`. |
 | [Inheritance](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/inheritance.md) of extended types | ✅ | |
 | [Argument templates](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/argument_template.md) and overloads | ✅ | Including element types (`Array<Number>`) and the error propagation rules. |
 | [Procedures](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/procedures/README.md) | ✅ | `SET`, `INIT`, `COND_SET`, `REQUIRE`, also without parentheses. |
-| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/functions/README.md) | ✅ | All 93 functions, including `FORMAT` and the time functions (`YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `HOUR`, `MINUTE`, `SECOND`, `MILLISECOND`, `DATE`, `FORMAT_TIME`; years `1` - `9999`), tested with the examples of their documents. |
-| Lambda functions | ✅ | |
+| [Functions](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/functions/README.md) | ✅ | All functions, including `FORMAT`, the time functions (`YEAR`, `MONTH`, `DAY`, `WEEKDAY`, `HOUR`, `MINUTE`, `SECOND`, `MILLISECOND`, `DATE`, `FORMAT_TIME`; years `1` - `9999`) and the functions of `core-1.1` (`CALL`, `FIRST`, `LAST`, `IFNULL`, `IFERR`, `ISINT`, `ISEVEN`, `ISODD`, `MEDIAN`, `VAR_P`, `VAR_S`, `STDEV_P`, `STDEV_S`, `MERGE`, the optional precision of `ROUND`, `FLOOR`, `CEIL`, `TRUNC`), tested with the examples of their documents. |
+| Lambda functions | ✅ | Delegate calls `$f(x)`, `f(x)`, `$o.f(x)` (`CALL`). The invocation depth is limited to 256 (`Lambda.MaxDepth`, per thread); a thread whose stack would overflow earlier gets an `OPERATION_ERROR` too (`RuntimeHelpers.TryEnsureSufficientExecutionStack`). |
 | [Operators](https://github.com/Adisoreq/FormuLang/blob/main/docs/syntax/operators.md) | ✅ | |
 
 ## Stock standard
@@ -60,7 +60,7 @@ Remove an item when it is fixed and covered by a test.
 
 | # | Deviation | Standard |
 | :-: | :-------- | :------- |
-| D3 | Conformance case `core.syntax.unicode.011` expects one error for `$zółw = 1`, but step 3.3 of the validation algorithm appends a `SYNTAX_ERROR` for every invalid symbol, so the library reports two (`ó` at column 3 and `ł` at column 4). The library follows the algorithm; the case is listed in `ConformanceTests.KnownDeviations` until the standard is clarified. | [validation.md § Validation algorithm](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/semantics/validation.md), [tests/core/syntax/text_unicode.json](https://github.com/Adisoreq/FormuLang/blob/main/tests/core/syntax/text_unicode.json) |
+| D3 | Resolved: conformance case `core.syntax.unicode.011` expected one error for `$zółw = 1`, but step 3.3 of the validation algorithm reports every invalid symbol. The standard fixed the case (it expects both errors), so it is no longer a known deviation. | [tests/core/syntax/text_unicode.json](https://github.com/Adisoreq/FormuLang/blob/main/tests/core/syntax/text_unicode.json) |
 | D2 | The primitive map holds the classified expressions; the values computed during evaluation are kept per node of the current queue instead of being written into the map. The order of evaluation and the results are the same. | [evaluation.md § Result propagation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md#4-result-propagation) |
 
 ## Implementation choices

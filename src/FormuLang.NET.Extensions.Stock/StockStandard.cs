@@ -13,7 +13,12 @@ namespace FormuLang.NET.Extensions.Stock
     /// </summary>
     public sealed class StockStandard : IStandard
     {
-        public const string Identifier = "stock-1.0";
+        public const string Identifier = "stock-1.1";
+
+        /// <summary>
+        /// Earlier versions that this version is backward compatible with; they are in <c>STANDARDS</c> too.
+        /// </summary>
+        public static IReadOnlyList<string> CompatibleIdentifiers { get; } = ["stock-1.0"];
 
         /// <summary>
         /// Required Core standard, in the <c>REQUIRE</c> format.
@@ -22,7 +27,7 @@ namespace FormuLang.NET.Extensions.Stock
 
         public string ID => "stock";
 
-        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 0 };
+        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 1 };
 
         public string Name => "Stock";
 
@@ -52,6 +57,8 @@ namespace FormuLang.NET.Extensions.Stock
                 StockFunctions.IsBearish,
                 StockFunctions.LoadIndicator(Registry),
                 StockFunctions.LoadPattern(Registry),
+                StockFunctions.Lag,
+                StockFunctions.Window,
             ];
         }
 
@@ -65,7 +72,7 @@ namespace FormuLang.NET.Extensions.Stock
     public static class StockEnvironmentExtensions
     {
         /// <summary>
-        /// Adds the Stock standard: <c>stock-1.0</c> in <c>STANDARDS</c>, the <c>Stock.Candle</c> type, the functions
+        /// Adds the Stock standard: <c>stock-1.1</c> in <c>STANDARDS</c>, the <c>Stock.Candle</c> type, the functions
         /// <c>CANDLE</c>, <c>IS_BULLISH</c>, <c>IS_BEARISH</c>, <c>LOAD_INDICATOR</c> and <c>LOAD_PATTERN</c>, and the
         /// formula registry.
         /// </summary>
@@ -76,6 +83,8 @@ namespace FormuLang.NET.Extensions.Stock
                 throw new InvalidOperationException($"The Stock standard requires {StockStandard.RequiredCore}.");
 
             var standard = new StockStandard(registry);
+            foreach (string compatible in StockStandard.CompatibleIdentifiers)
+                environment.RegisterStandard(compatible);
             environment.RegisterStandard(standard);
             return standard;
         }

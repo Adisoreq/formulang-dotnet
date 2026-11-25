@@ -12,9 +12,6 @@ namespace FormuLang.NET.Conformance.Tests
         /// </summary>
         public static IReadOnlyDictionary<string, string> KnownDeviations { get; } = new Dictionary<string, string>
         {
-            ["core.syntax.unicode.011"] =
-                "Core validation step 3.3 appends a SYNTAX_ERROR for every invalid symbol, so \"$zółw = 1\" has two " +
-                "errors (\"ó\" and \"ł\"), but the case expects only the first one.",
         };
 
         public static TheoryData<string> CaseIds()

@@ -10,13 +10,18 @@ namespace FormuLang.NET.Core.Standards
     /// </summary>
     public sealed class CoreStandard : IStandard
     {
-        public const string Identifier = "core-1.0";
+        public const string Identifier = "core-1.1";
+
+        /// <summary>
+        /// Earlier versions that this version is backward compatible with; they are in <c>STANDARDS</c> too.
+        /// </summary>
+        public static IReadOnlyList<string> CompatibleIdentifiers { get; } = ["core-1.0"];
 
         public static CoreStandard Instance { get; } = new();
 
         public string ID => "core";
 
-        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 0 };
+        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 1 };
 
         public string Name => "Core";
 

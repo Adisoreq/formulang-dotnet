@@ -105,7 +105,8 @@ namespace FormuLang.NET.Extensions.Stock.Tests
             var env = CreateEnvironment();
 
             Assert.True(env.Supports("stock-1.0"));
-            Assert.Equal("[\"core-1.0\", \"stock-1.0\"]", env.GetProperty("STANDARDS").GetValue().ToString());
+            Assert.True(env.Supports("stock-1.1"));
+            Assert.Equal("[\"core-1.0\", \"core-1.1\", \"stock-1.0\", \"stock-1.1\"]", env.GetProperty("STANDARDS").GetValue().ToString());
             Assert.Contains("Stock.Candle", env.ExtendedTypes);
             Assert.NotNull(env.GetFunction("CANDLE"));
             Assert.NotNull(env.GetFormulaRegistry());

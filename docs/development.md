@@ -76,10 +76,10 @@ One-time setup: create an API key on nuget.org (scope *Push*, glob pattern `Form
 A release:
 
 1. Set `<Version>` in [Directory.Build.props](../Directory.Build.props) and move the changes from `[Unreleased]` to a new section of the [CHANGELOG](../CHANGELOG.md).
-2. Check the packages locally:
+2. Check the packages locally: [scripts/pack.ps1](../scripts/pack.ps1) builds the solution in Release, runs the tests and packs the three packages (`.nupkg` and `.snupkg`) into `artifacts`, like the Release workflow. It warns if the version is already tagged or the working tree has uncommitted changes (`-SkipTests` packs without the tests, `-Output` sets another directory).
 
    ```bash
-   dotnet pack src/FormuLang.NET.Core -c Release -o artifacts
+   pwsh scripts/pack.ps1
    ```
 
 3. Commit, then tag the commit with the version and push the tag:

@@ -7,7 +7,7 @@
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-dotnet)
 ![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)
 [![NuGet](https://img.shields.io/nuget/v/FormuLang.NET.Core?label=NuGet)](https://www.nuget.org/packages/FormuLang.NET.Core)
-[![Standards](https://img.shields.io/badge/standards-core--1.0%20%C2%B7%20stock--1.0-2fbf71)](docs/conformance.md)
+[![Standards](https://img.shields.io/badge/standards-core--1.1%20%C2%B7%20stock--1.1-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Conformance**](docs/conformance.md) · [**Changelog**](CHANGELOG.md)
 
@@ -67,21 +67,73 @@ More: [Architecture](docs/architecture.md).
 
 ## Installation
 
-The modules are published on NuGet as separate packages. `FormuLang.NET.Core` brings `FormuLang.NET.Abstractions` with it.
+The modules are published on [NuGet](https://www.nuget.org/packages?q=FormuLang.NET) as separate packages:
+
+| Package | Standard | When you need it |
+| :------ | :------- | :--------------- |
+| [FormuLang.NET.Core](https://www.nuget.org/packages/FormuLang.NET.Core) | `core-1.1` (and `core-1.0`) | Always: the language and its execution pipeline. Brings `FormuLang.NET.Abstractions` with it. |
+| [FormuLang.NET.Extensions.Stock](https://www.nuget.org/packages/FormuLang.NET.Extensions.Stock) | `stock-1.1` (and `stock-1.0`) | Formulas on market data: candles, indicators, patterns, strategies. |
+| [FormuLang.NET.Abstractions](https://www.nuget.org/packages/FormuLang.NET.Abstractions) | - | Only to implement your own pipeline stages without the Core module. |
+
+### 1. Check the requirements
+
+The library targets .NET 8.0, so the project needs .NET 8.0 or newer (e.g. `<TargetFramework>net8.0</TargetFramework>` or `net10.0`). Check the installed SDK:
+
+```bash
+dotnet --version
+```
+
+### 2. Add the package
+
+In the directory of the project (the one with the `.csproj` file):
 
 ```bash
 dotnet add package FormuLang.NET.Core
 ```
 
+The command adds a reference to the `.csproj` file. You can also add it by hand, or with the NuGet package manager of Visual Studio or Rider:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="FormuLang.NET.Core" Version="1.1.*" />
+</ItemGroup>
+```
+
+Within `1.x`, new versions are backward compatible, so `1.1.*` (or `1.*`) gets the fixes without breaking your code.
+
+### 3. Run your first formula
+
+Replace the content of `Program.cs`:
+
+```csharp
+using FormuLang.NET.Core.Processing;
+using Environment = FormuLang.NET.Core.Structures.Environment;
+
+var result = Executor.Create().Execute("$double = (x) => x * 2
+$double(21)", Environment.Create());
+Console.WriteLine(result.Successful ? result.Value : result.Error);   // 42
+```
+
+```bash
+dotnet run
+```
+
+### 4. Add the Stock standard (optional)
+
 ```bash
 dotnet add package FormuLang.NET.Extensions.Stock
 ```
 
-| Package | Standard |
-| :------ | :------- |
-| [FormuLang.NET.Abstractions](https://www.nuget.org/packages/FormuLang.NET.Abstractions) | - |
-| [FormuLang.NET.Core](https://www.nuget.org/packages/FormuLang.NET.Core) | `core-1.0` |
-| [FormuLang.NET.Extensions.Stock](https://www.nuget.org/packages/FormuLang.NET.Extensions.Stock) | `stock-1.0` |
+```csharp
+using FormuLang.NET.Extensions.Stock;
+using FormuLang.NET.Extensions.Stock.Registry;
+
+var environment = Environment.Create();
+var registry = environment.RegisterStock().Registry;   // LOAD_INDICATOR, LAG, WINDOW, Stock.Candle, stock-1.1
+registry.Indicators.Add("SMA", "WINDOW(SOURCE, PARAMETERS.period, AVG)", new FormulaParameter("period", 20));
+```
+
+The next steps (contexts, iterations over candles, your own functions) are in [Getting started](docs/getting-started.md).
 
 
 ## Quick example

@@ -1,6 +1,6 @@
 # FormuLang.NET.Extensions.Stock
 
-**Stock** standard (`stock-1.0`) of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet): market data in [**FormuLang**](https://github.com/Adisoreq/FormuLang) formulas. Indicators, candle patterns and trading strategies are formulas executed once for every candle of a chart.
+**Stock** standard (`stock-1.1`) of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet): market data in [**FormuLang**](https://github.com/Adisoreq/FormuLang) formulas. Indicators, candle patterns and trading strategies are formulas executed once for every candle of a chart.
 
 ## Usage
 

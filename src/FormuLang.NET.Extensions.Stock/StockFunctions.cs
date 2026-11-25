@@ -134,6 +134,86 @@ namespace FormuLang.NET.Extensions.Stock
         }
 
         internal static string ParametersKey(IValue parameters) => StringConverter.ValueToString(parameters);
+
+        // stock-1.1
+
+        public const string LagName = "LAG";
+        public const string WindowName = "WINDOW";
+
+        /// <summary>
+        /// <c>LAG(series, offset)</c> (docs/standards/stock/functions/LAG.md): the value <c>offset</c> candles before the
+        /// current one (1 by default), or <c>null</c> before the first candle.
+        /// </summary>
+        public static Function Lag { get; } = new(LagName,
+        [
+            new FunctionOverload([ArgumentTemplate.Of("series", Types.Array)], (a, c) => ComputeLag((IValue[])a[0].Raw!, 1, c)),
+            new FunctionOverload([ArgumentTemplate.Of("series", Types.Array), ArgumentTemplate.Of("offset", Types.Number)],
+                (a, c) => ComputeLag((IValue[])a[0].Raw!, (double)a[1].Raw!, c)),
+        ]) { SideEffectFree = true };
+
+        /// <summary>
+        /// <c>WINDOW(series, length, handler?)</c> (docs/standards/stock/functions/WINDOW.md): the last <c>length</c> values
+        /// up to the current candle, or the result of <c>handler</c> for them; <c>null</c> while there are fewer values.
+        /// </summary>
+        public static Function Window { get; } = new(WindowName,
+        [
+            new FunctionOverload([ArgumentTemplate.Of("series", Types.Array), ArgumentTemplate.Of("length", Types.Number)],
+                (a, c) => ComputeWindow((IValue[])a[0].Raw!, (double)a[1].Raw!, null, c)),
+            new FunctionOverload([ArgumentTemplate.Of("series", Types.Array), ArgumentTemplate.Of("length", Types.Number), ArgumentTemplate.Of("handler", Types.Delegate)],
+                (a, c) => ComputeWindow((IValue[])a[0].Raw!, (double)a[1].Raw!, (IFunction)a[2].Raw!, c)),
+        ]) { SideEffectFree = true };
+
+        /// <summary>
+        /// Position of the current candle in a series of a Stock Context (independent of <c>@array_indexing</c>), or an Error.
+        /// </summary>
+        private static IValue? CurrentPosition(string name, IValue[] series, IContext context, out int position)
+        {
+            position = 0;
+
+            if (context is not StockContext stock)
+                return OperationError($"\"{name}\" can be called only in a Stock Context.");
+
+            if (series.Length != stock.Count)
+                return OperationError($"The series has {series.Length} elements, but there are {stock.Count} candles.");
+
+            position = stock.Iteration;
+            return null;
+        }
+
+        private static IValue ComputeLag(IValue[] series, double offset, IContext context)
+        {
+            if (CurrentPosition(LagName, series, context, out int position) is IValue error)
+                return error;
+
+            if (!double.IsFinite(offset) || Math.Floor(offset) != offset || offset < 0)
+                return OperationError("The offset must be a whole number of 0 or more (a future value cannot be read).");
+
+            double at = position - offset;
+            return at < 0 ? Value.Null("null") : series[(int)at];
+        }
+
+        private static IValue ComputeWindow(IValue[] series, double length, IFunction? handler, IContext context)
+        {
+            if (CurrentPosition(WindowName, series, context, out int position) is IValue error)
+                return error;
+
+            if (!double.IsFinite(length) || Math.Floor(length) != length || length < 1)
+                return OperationError("The length of a window must be a whole number of 1 or more.");
+
+            if (position + 1 < length)
+                return Value.Null("null");
+
+            int count = (int)length;
+            IValue window = Value.Array(series.Skip(position - count + 1).Take(count), "");
+
+            if (handler == null)
+                return window;
+
+            if (handler is ILambda lambda && lambda.Parameters.Count != 1)
+                return Value.Error(Errors.ArgumentError($"The lambda passed to \"{WindowName}\" must have exactly 1 parameter."), "");
+
+            return handler.Invoke([window], context);
+        }
     }
 
     /// <summary>

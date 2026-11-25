@@ -339,12 +339,38 @@ namespace FormuLang.NET.Core.Processing
                 return Value.Error(Errors.ArgumentError(
                     $"The lambda expects {Parameters.Count} argument(s), but {args.Length} were given."), Name);
 
+            // docs/semantics/evaluation.md, "Invocation depth": a deeper invocation is an OPERATION_ERROR, never a stack overflow
+            if (_depth >= MaxDepth)
+                return Value.Error(Errors.OperationError(
+                    $"Lambda invocations are nested more than {MaxDepth} deep (a recursion that does not stop?)."), Name);
+
+            // A thread with a small stack (e.g. a host thread) could overflow before the limit: an Error is still better
+            // than a StackOverflowException, which stops the whole process
+            if (!RuntimeHelpers.TryEnsureSufficientExecutionStack())
+                return Value.Error(Errors.OperationError("Lambda invocations are nested too deep for the stack of this thread."), Name);
+
             var bindings = new Dictionary<string, IValue>(StringComparer.Ordinal);
             for (int i = 0; i < args.Length; i++)
                 bindings[Parameters[i]] = args[i];
 
-            return _evaluator.EvaluateSequence(_node.Body, new Evaluator.Scope(_scope.Context, bindings, _scope), isFormulaSequence: false);
+            _depth++;
+            try
+            {
+                return _evaluator.EvaluateSequence(_node.Body, new Evaluator.Scope(_scope.Context, bindings, _scope), isFormulaSequence: false);
+            }
+            finally
+            {
+                _depth--;
+            }
         }
+
+        /// <summary>
+        /// Maximum number of lambda invocations running one inside another (docs/semantics/evaluation.md).
+        /// </summary>
+        public const int MaxDepth = 256;
+
+        // Per thread: the executions of different threads do not share the depth
+        [ThreadStatic] private static int _depth;
 
         public override string ToString() => $"({string.Join(", ", Parameters)}) => any";
     }

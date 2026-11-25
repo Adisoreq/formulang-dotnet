@@ -83,6 +83,9 @@ namespace FormuLang.NET.Core.Structures
             env.InitVariable(SerializationOptions.IncludeObjectClassName, Value.Boolean(false, "false"));
             env.InitVariable(SerializationOptions.MaxArrayPreviewName, Value.Number(-1, "-1"));
 
+            // core-1.1 is backward compatible: STANDARDS lists core-1.0 too, so REQUIRE "core-1.0" keeps working
+            foreach (string compatible in FormuLang.NET.Core.Standards.CoreStandard.CompatibleIdentifiers)
+                env.RegisterStandard(compatible);
             env.RegisterStandard(FormuLang.NET.Core.Standards.CoreStandard.Instance);
 
             return env;

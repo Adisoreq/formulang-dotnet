@@ -1,6 +1,6 @@
 # FormuLang.NET.Core
 
-.NET implementation of the [**FormuLang**](https://github.com/Adisoreq/FormuLang) formula language, **Core** standard `core-1.0`.
+.NET implementation of the [**FormuLang**](https://github.com/Adisoreq/FormuLang) formula language, **Core** standard `core-1.1`.
 
 A host application embeds the interpreter and lets its users write text formulas:
 
@@ -28,7 +28,7 @@ Console.WriteLine(result.Successful ? result.ToString() : result.Error.ToString(
 
 ## Features
 
-- Every function, procedure, error and operator of `core-1.0`: arithmetic, logic, text (Unicode code points), arrays, lambdas, objects, trigonometry, `FORMAT` and the time functions (`DATE`, `FORMAT_TIME`, `YEAR` ... `MILLISECOND`).
+- Every function, procedure, error and operator of `core-1.1`, including delegate calls (`$f(x)`): arithmetic, logic, text (Unicode code points), arrays, lambdas, objects, trigonometry, `FORMAT` and the time functions (`DATE`, `FORMAT_TIME`, `YEAR` ... `MILLISECOND`).
 - Line comments `#` and scoped comments `<# ... #>`.
 - Context types: **Default Context** (`Context`), **Iteration Context** (`IterationContext`, `Executor.ExecuteIterations`) and **Time Context** (`TimeContext`, `Executor.CreateFrameRunner` for animations and simulations).
 - `NOW` read once per execution from a `TimeProvider` (or pinned with `Environment.SetNow`), `@time_offset` for local time.

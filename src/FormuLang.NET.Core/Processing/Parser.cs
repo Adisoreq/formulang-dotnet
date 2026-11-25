@@ -247,7 +247,11 @@ namespace FormuLang.NET.Core.Processing
                     case "false": return new LiteralNode(Value.Boolean(false, "false"), "false");
                 }
 
-                if (IsOperator(Peek(), "("))
+                // A lambda parameter followed by "(" is a delegate call (core-1.1): the parameter is the operand of the
+                // postfix "(", so the parameter wins over a named function with the same name
+                bool parameter = _lambdaScopes.Any(scope => scope.Contains(name));
+
+                if (!parameter && IsOperator(Peek(), "("))
                 {
                     _position++;
                     return new CallNode(name, ParseList(")"));
@@ -256,7 +260,7 @@ namespace FormuLang.NET.Core.Processing
                 if (procedures.TryGetValue(name, out int parameterCount))
                     return ParseProcedureCall(name, parameterCount);
 
-                if (_lambdaScopes.Any(scope => scope.Contains(name)))
+                if (parameter)
                     return new ParameterNode(name);
 
                 return new ConstantNode(name);
@@ -423,7 +427,7 @@ namespace FormuLang.NET.Core.Processing
                 "+" or "-" => Operators.AdditivePower,
                 "*" or "/" or "%" => Operators.MultiplicativePower,
                 "^" => Operators.ExponentialPower,
-                "." or "[" => Operators.PostfixPower,
+                "." or "[" or "(" => Operators.PostfixPower,
                 _ => -1,
             };
 
@@ -476,6 +480,10 @@ namespace FormuLang.NET.Core.Processing
                     Expect("]");
                     return new CallNode("GET", [left, index]);
                 }
+
+                // Delegate call (core-1.1): the value of the operand is called, e.g. $f(2) is CALL($f, 2)
+                if (symbol == "(")
+                    return new CallNode("CALL", [left, .. ParseList(")")]);
 
                 ExpressionNode right = ParseExpression(RightBindingPower(symbol));
 

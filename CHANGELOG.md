@@ -8,12 +8,16 @@
 
 All notable changes of **FormuLang.NET**. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the library uses [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-25
 
-Faster execution of formulas run for every candle or element (Iteration Context); the results are the same.
+Supported standards: `core-1.1`, `stock-1.1` (backward compatible with `core-1.0` and `stock-1.0`). Faster execution of formulas run for every candle or element (Iteration Context); the results of `1.0` formulas are the same.
 
 ### Added
 
+- `core-1.1`: delegate calls `$f(x)`, `f(x)` for a lambda parameter, `$o.f(x)`, `$a[0](x)`, `((x) => x)(1)`, translated by the parser into the new function `CALL`; the invocation depth is limited to 256 (`Lambda.MaxDepth`) and a too deep invocation is an `OPERATION_ERROR` instead of a `StackOverflowException`.
+- `core-1.1` functions: `FIRST`, `LAST`, `IFNULL`, `IFERR`, `ISINT`, `ISEVEN`, `ISODD`, `MEDIAN`, `VAR_P`, `VAR_S`, `STDEV_P`, `STDEV_S`, `MERGE`; the `precision` of `ROUND`, `FLOOR`, `CEIL` and `TRUNC` is optional.
+- `stock-1.1` functions: `LAG(series, offset?)` and `WINDOW(series, length, handler?)`.
+- `STANDARDS` lists the earlier compatible versions too (`["core-1.0", "core-1.1"]`, then `"stock-1.0"`, `"stock-1.1"`), so `REQUIRE "core-1.0"` keeps working (`CoreStandard.CompatibleIdentifiers`, `StockStandard.CompatibleIdentifiers`).
 - `Function.SideEffectFree`: a function that only computes its result. All Core and Stock functions are side-effect free; functions of the host application are not, unless they set it.
 - `Value.Number(double)`: a Number whose expression is formatted when it is first read.
 

@@ -44,16 +44,16 @@ namespace FormuLang.NET.Core.Standards
                 : N(Math.Log(Num(a[0]))), NumberArg("value"))),
             Fn("ABS", Overload((a, _) => N(Math.Abs(Num(a[0]))), NumberArg("num"))),
             Fn("NEG", Overload((a, _) => N(0 - Num(a[0])), NumberArg("num"))),
-            Fn("CEIL", Overload((a, _) => Round(Num(a[0]), Num(a[1]), Math.Ceiling, Math.Ceiling), NumberArg("number"), NumberArg("precision"))),
-            Fn("FLOOR", Overload((a, _) => Round(Num(a[0]), Num(a[1]), Math.Floor, Math.Floor), NumberArg("number"), NumberArg("precision"))),
-            Fn("ROUND", Overload((a, _) => Round(Num(a[0]), Num(a[1]),
+            Fn("CEIL", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Ceiling, Math.Ceiling), NumberArg("number"), PrecisionArg())),
+            Fn("FLOOR", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Floor, Math.Floor), NumberArg("number"), PrecisionArg())),
+            Fn("ROUND", Overload((a, _) => Round(Num(a[0]), Precision(a),
                 d => Math.Round(d, MidpointRounding.AwayFromZero),
-                d => Math.Round(d, MidpointRounding.AwayFromZero)), NumberArg("number"), NumberArg("precision"))),
+                d => Math.Round(d, MidpointRounding.AwayFromZero)), NumberArg("number"), PrecisionArg())),
             Fn("CLAMP", Overload((a, _) => Num(a[1]) > Num(a[2])
                 ? OperationError("\"min\" is greater than \"max\".")
                 : N(Math.Clamp(Num(a[0]), Num(a[1]), Num(a[2]))), NumberArg("value"), NumberArg("min"), NumberArg("max"))),
             Fn("SIGN", Overload((a, _) => N(Math.Sign(Num(a[0]))), NumberArg("num"))),
-            Fn("TRUNC", Overload((a, _) => Round(Num(a[0]), Num(a[1]), Math.Truncate, Math.Truncate), NumberArg("number"), NumberArg("precision"))),
+            Fn("TRUNC", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Truncate, Math.Truncate), NumberArg("number"), PrecisionArg())),
 
             // 2. Logic and comparison
             Fn("AND", Overload((a, _) => B(Bool(a[0]) && Bool(a[1])), BooleanArg("a"), BooleanArg("b"))),
@@ -183,11 +183,21 @@ namespace FormuLang.NET.Core.Standards
             // 10. Time
             .. TimeFunctions(),
 
+            // 11. Added in core-1.1
+            .. Core11Functions(),
+
             // Target of the object literal translation: { k1: a, "k2": b } is OBJECT("k1",a,"k2",b)
             Fn("OBJECT", Overload((a, _) => CreateObject(a), ArgumentTemplate.Any("entries", optional: true, multiple: true))),
         ];
 
         // Arithmetic
+
+        /// <summary>
+        /// The optional <c>precision</c> of the rounding functions (core-1.1): <c>0</c> when it is omitted.
+        /// </summary>
+        private static ArgumentTemplate PrecisionArg() => ArgumentTemplate.Of("precision", Types.Number, optional: true);
+
+        private static double Precision(IReadOnlyList<IValue> arguments) => arguments.Count > 1 ? Num(arguments[1]) : 0;
 
         private static IValue Pow(double b, double e)
         {

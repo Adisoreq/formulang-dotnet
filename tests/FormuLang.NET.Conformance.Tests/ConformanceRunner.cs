@@ -32,11 +32,14 @@ namespace FormuLang.NET.Conformance.Tests
     public static class ConformanceRunner
     {
         /// <summary>
-        /// Standards implemented by the library. A case that requires another standard is skipped.
+        /// Standards implemented by the library. A case that requires another standard is skipped. The 1.1 versions are
+        /// backward compatible, so the cases of the 1.0 versions apply too.
         /// </summary>
         public static IReadOnlySet<string> SupportedStandards { get; } = new HashSet<string>
         {
+            "core-1.0",
             Core.Standards.CoreStandard.Identifier,
+            "stock-1.0",
             StockStandard.Identifier,
         };
 
