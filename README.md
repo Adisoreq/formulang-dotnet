@@ -7,7 +7,7 @@
 ![GitHub License](https://img.shields.io/github/license/Adisoreq/formulang-dotnet)
 ![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)
 [![NuGet](https://img.shields.io/nuget/v/FormuLang.NET.Core?label=NuGet)](https://www.nuget.org/packages/FormuLang.NET.Core)
-[![Standards](https://img.shields.io/badge/standards-core--1.1%20%C2%B7%20stock--1.1-2fbf71)](docs/conformance.md)
+[![Standards](https://img.shields.io/badge/standards-core--1.2%20%C2%B7%20stock--1.2-2fbf71)](docs/conformance.md)
 
 [**Documentation**](docs/README.md) · [**Getting started**](docs/getting-started.md) · [**Conformance**](docs/conformance.md) · [**Changelog**](CHANGELOG.md)
 
@@ -71,8 +71,8 @@ The modules are published on [NuGet](https://www.nuget.org/packages?q=FormuLang.
 
 | Package | Standard | When you need it |
 | :------ | :------- | :--------------- |
-| [FormuLang.NET.Core](https://www.nuget.org/packages/FormuLang.NET.Core) | `core-1.1` (and `core-1.0`) | Always: the language and its execution pipeline. Brings `FormuLang.NET.Abstractions` with it. |
-| [FormuLang.NET.Extensions.Stock](https://www.nuget.org/packages/FormuLang.NET.Extensions.Stock) | `stock-1.1` (and `stock-1.0`) | Formulas on market data: candles, indicators, patterns, strategies. |
+| [FormuLang.NET.Core](https://www.nuget.org/packages/FormuLang.NET.Core) | `core-1.2` (and `core-1.0`, `core-1.1`) | Always: the language and its execution pipeline. Brings `FormuLang.NET.Abstractions` with it. |
+| [FormuLang.NET.Extensions.Stock](https://www.nuget.org/packages/FormuLang.NET.Extensions.Stock) | `stock-1.2` (and `stock-1.0`, `stock-1.1`) | Formulas on market data: candles, indicators, patterns, strategies, and the formula models (definitions, instances, runs) for host applications. |
 | [FormuLang.NET.Abstractions](https://www.nuget.org/packages/FormuLang.NET.Abstractions) | - | Only to implement your own pipeline stages without the Core module. |
 
 ### 1. Check the requirements
@@ -95,11 +95,11 @@ The command adds a reference to the `.csproj` file. You can also add it by hand,
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="FormuLang.NET.Core" Version="1.1.*" />
+  <PackageReference Include="FormuLang.NET.Core" Version="1.2.*" />
 </ItemGroup>
 ```
 
-Within `1.x`, new versions are backward compatible, so `1.1.*` (or `1.*`) gets the fixes without breaking your code.
+Within `1.x`, new versions are backward compatible, so `1.2.*` (or `1.*`) gets the fixes without breaking your code.
 
 ### 3. Run your first formula
 
@@ -129,7 +129,7 @@ using FormuLang.NET.Extensions.Stock;
 using FormuLang.NET.Extensions.Stock.Registry;
 
 var environment = Environment.Create();
-var registry = environment.RegisterStock().Registry;   // LOAD_INDICATOR, LAG, WINDOW, Stock.Candle, stock-1.1
+var registry = environment.RegisterStock().Registry;   // LOAD_INDICATOR, LOAD_CANDLES, CROSSOVER, SCORE, Stock.Candle, stock-1.2
 registry.Indicators.Add("SMA", "WINDOW(SOURCE, PARAMETERS.period, AVG)", new FormulaParameter("period", 20));
 ```
 

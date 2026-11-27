@@ -50,7 +50,7 @@ namespace FormuLang.NET.Core.Functions
         /// to the first Error element of an array that did not match an element type, or to <c>ARGUMENT_ERROR</c>.
         /// A procedure never accepts an Error argument.
         /// </summary>
-        public IValue Invoke(IEnumerable<IValue> parameters, IContext context)
+        public virtual IValue Invoke(IEnumerable<IValue> parameters, IContext context)
         {
             IValue[] args = parameters.ToArray();
 
@@ -111,6 +111,13 @@ namespace FormuLang.NET.Core.Functions
         /// Number of parameters; used to parse a call written without parentheses (<c>SET $x 100</c>).
         /// </summary>
         public int ParameterCount { get; }
+
+        /// <summary>
+        /// The only side effects of the procedure are writes to the memory of the context (<c>STORE</c>, <c>CLEAR</c>).
+        /// They are discarded in a branch of <c>IF</c> that is not selected, so the branch may still be skipped
+        /// (docs/standards/core/functions/IF.md, "Performance"). <c>false</c> by default.
+        /// </summary>
+        public bool WritesMemoryOnly { get; init; }
 
         public Procedure(string name, int parameterCount, bool takesVariable, IEnumerable<IFunctionOverload> overloads)
             : base(name, FunctionType.Procedure, overloads)

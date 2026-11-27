@@ -13,10 +13,10 @@ namespace FormuLang.NET.Core.Structures
     /// <c>@array_indexing</c>) and <c>PREV</c> (result of the previous frame).
     /// </summary>
     /// <remarks>
-    /// Run the frames with <see cref="Processing.Executor.CreateFrameRunner"/> (the formula is parsed once), or call
+    /// Run the frames with <see cref="Processing.Executor.CreateFrameRunner(string, TimeContext)"/> (the formula is parsed once), or call
     /// <see cref="BeginFrame"/> before every execution. Every frame starts with no context variables and with the
-    /// environment variables of the environment; the only state passed from one frame to the next is <c>PREV</c>.
-    /// <c>NOW</c> is set again for every frame.
+    /// environment variables of the environment; the only state passed from one frame to the next is <c>PREV</c> and
+    /// the <see cref="Memory"/> (since <c>core-1.2</c>). <c>NOW</c> is set again for every frame.
     /// </remarks>
     public class TimeContext : Context
     {
@@ -47,8 +47,18 @@ namespace FormuLang.NET.Core.Structures
         /// </summary>
         public IValue Previous { get; private set; } = Value.Null(PreviousConstant);
 
+        private static readonly IReadOnlyList<string> TimeTypeNames = ["Time", "Default"];
+        private readonly ContextMemory _memory = new();
+
         protected TimeContext(IEnvironment environment)
             : base(environment, ContextType.Persistent) { }
+
+        /// <summary>
+        /// The memory of the context (<c>STORE</c>, <c>RECALL</c>, <c>CLEAR</c>); emptied when the first frame begins.
+        /// </summary>
+        public override ContextMemory Memory => _memory;
+
+        public override IReadOnlyList<string> ContextTypeNames => TimeTypeNames;
 
         /// <summary>
         /// Creates a Time Context positioned at the first frame (<c>TIME_S</c> = 0).
@@ -96,6 +106,9 @@ namespace FormuLang.NET.Core.Structures
 
             EnsureContextData(); // loads the context constants before the first frame
             ClearVariables();
+
+            if (frame == 0)
+                _memory.Reset();
 
             Frame = frame;
             TimeSeconds = timeSeconds;

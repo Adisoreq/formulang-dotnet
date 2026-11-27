@@ -34,6 +34,8 @@ namespace WebPreview.Model
             // A scoped comment may span lines; an unclosed one ends with the formula
             (new Regex(@"\G<#[\s\S]*?(?:#>|\z)"), TokenClass.Comment),
             (new Regex(@"\G#[^\n]*"), TokenClass.Comment),
+            // Markers of the metadata block <@ { ... } @> (Core 1.2)
+            (new Regex(@"\G(?:<@(?=\s*\{)|@>)"), TokenClass.Bracket),
             (new Regex(@"\G""(?:[^""\\\n]|\\.)*""?"), TokenClass.Text),
             (new Regex(@"\G(?:0[xX][0-9a-fA-F]+|(?:[0-9][0-9_]*(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)"), TokenClass.Number),
             (new Regex(@"\G\$[A-Za-z_][A-Za-z0-9_]*"), TokenClass.Variable),

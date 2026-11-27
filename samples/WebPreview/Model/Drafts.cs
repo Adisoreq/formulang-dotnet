@@ -178,7 +178,9 @@ namespace WebPreview.Model
                     problems.Add($"{what} \"{value}\" is not a valid identifier (^[a-zA-Z_]\\w*$).");
             }
 
-            Identifier(registryId, "Registry id");
+            // A registry id is always a Text (LOAD_INDICATOR("macd-ema200")), so it may contain "-" (Stock 1.2)
+            if (!FormuLang.NET.Extensions.Stock.Registry.FormulaIds.IsValid(registryId))
+                problems.Add($"Registry id \"{registryId}\" is not valid (letters, digits, \"_\" and \"-\", ^[a-zA-Z_][\\w-]*$).");
             if (otherIds.Contains(registryId, StringComparer.Ordinal))
                 problems.Add($"Registry id \"{registryId}\" is used by another {kind}.");
 

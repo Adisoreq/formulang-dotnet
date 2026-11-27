@@ -85,6 +85,27 @@
     Value of a strategy = its signal (-1 … 1) × confidence, active for <em>lifetime</em> candles. The final proposal
     is the sum of the values of the active strategies.
 </p>
+@if (LastDetails() is (int detailsIndex, SignalDetails details))
+{
+    @* Stock 1.2: the last signal object of the selected strategy, with its reason and checks *@
+    <details class="panel signal-details" open>
+        <summary>Signal object of @State.SelectedStrategy.Name · @Candles.DateOf(State.Candles, detailsIndex)</summary>
+        @if (details.Reason != null)
+        {
+            <p>@details.Reason</p>
+        }
+        <ul>
+            @foreach (var (key, passed) in details.Checks)
+            {
+                <li class="@(passed ? "check-true" : "check-false")">@(passed ? "✓" : "✗") @key</li>
+            }
+            @foreach (var (key, value) in details.Extra)
+            {
+                <li class="muted">@key: @value</li>
+            }
+        </ul>
+    </details>
+}
 
 @code {
     private const string HistogramLabel = "Proposal";
@@ -99,6 +120,20 @@
         => State.Strategies.FirstOrDefault(s => s.Id == id)?.Runtime is { } w ? new StrategyWeights(w.Active, w.Confidence, w.Lifetime) : null;
 
     private StrategySignals? SignalsOf(string id) => Run.Strategies.FirstOrDefault(s => s.Id == id);
+
+    /// <summary>The last signal object of the selected strategy and the index of its candle.</summary>
+    private (int Index, SignalDetails Details)? LastDetails()
+    {
+        IReadOnlyList<SignalDetails?> details = SignalsOf(State.Selected[ContextKind.Strategy])?.Details ?? [];
+
+        for (int index = details.Count - 1; index >= 0; index--)
+        {
+            if (details[index] is SignalDetails found)
+                return (index, found);
+        }
+
+        return null;
+    }
 
     private IReadOnlyList<ChartMarker> MarkersOf(Proposal result)
     {

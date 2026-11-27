@@ -826,6 +826,43 @@ input[type="range"] {
   color: var(--down);
 }
 
+.warnings {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  background: rgba(242, 193, 78, 0.08);
+  font: 12.5px/1.5 var(--font-mono);
+}
+
+.warnings p {
+  margin: 2px 0;
+}
+
+.warning-code {
+  color: var(--warn);
+}
+
+.metadata {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12.5px/1.5 var(--font-mono);
+}
+
+.signal-details {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+
+.signal-details .check-true {
+  color: var(--up);
+}
+
+.signal-details .check-false {
+  color: var(--down);
+}
+
 .problems {
   margin-bottom: 12px;
   padding: 8px 12px;

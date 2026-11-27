@@ -33,6 +33,17 @@ namespace FormuLang.NET.Core.Processing
 
         IValidationResult IValidator.Validate(string formula, IEnvironment environment) => Validate(formula, environment);
 
+        /// <summary>
+        /// Only the checks of the environment, without a formula: done once for every context before its first hot
+        /// execution of a prepared formula (docs/semantics/execution.md, "Execution modes", rule 2).
+        /// </summary>
+        public static ValidationResult ValidateEnvironment(IEnvironment environment)
+        {
+            var errors = new List<IError>();
+            CheckEnvironment(environment, errors);
+            return new ValidationResult(errors);
+        }
+
         // Environment checks
 
         private static void CheckEnvironment(IEnvironment environment, List<IError> errors)

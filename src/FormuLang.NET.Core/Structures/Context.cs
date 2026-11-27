@@ -26,6 +26,31 @@ namespace FormuLang.NET.Core.Structures
         /// </summary>
         public ContextType ContextType { get; }
 
+        /// <summary>
+        /// Memory of the context (docs/core/context.md, "Memory", since <c>core-1.2</c>). The Default Context has none:
+        /// <c>STORE</c>, <c>CLEAR</c> and <c>RECALL</c> are an <c>OPERATION_ERROR</c> there.
+        /// </summary>
+        public virtual ContextMemory? Memory => null;
+
+        IMemory? IContext.Memory => Memory;
+
+        private static readonly IReadOnlyList<string> DefaultTypeNames = ["Default"];
+
+        /// <summary>
+        /// Names of the context type and of its base types, from the most derived one (docs/standards/core/README.md,
+        /// "Metadata", key <c>context</c>), e.g. <c>["Iteration", "Default"]</c>. The <c>METADATA_CONTEXT</c> warning
+        /// compares the <c>context</c> key of the metadata with them.
+        /// </summary>
+        public virtual IReadOnlyList<string> ContextTypeNames => DefaultTypeNames;
+
+        /// <summary>
+        /// Finalization (docs/semantics/finalization.md) of the result of an execution in this context: a context type
+        /// with rules for its expected result (e.g. the signal object of a Stock strategy) returns an Error for a value
+        /// that breaks them. Called by the executor before the writes to the memory are applied. Returns the value
+        /// unchanged by default.
+        /// </summary>
+        public virtual IValue FinalizeResult(IValue value) => value;
+
         protected Context(IEnvironment environment, ContextType contextType)
         {
             Environment = environment;

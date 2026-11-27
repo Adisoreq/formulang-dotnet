@@ -3,10 +3,7 @@
     <span class="prompt">result ›</span>
     <pre>@Run.Execution.ToString()</pre>
 </div>
-@if (Run.Execution.ValidationErrors.Count > 0)
-{
-    <Problems Diagnostics="Diagnostics" />
-}
+<Problems Diagnostics="Diagnostics" />
 <details class="panel" open>
     <summary>Sequences, parsed and translated</summary>
     @if (Diagnostics.Sequences.Count > 0)

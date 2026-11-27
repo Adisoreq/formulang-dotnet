@@ -12,6 +12,8 @@ namespace FormuLang.NET.Conformance.Tests
         /// </summary>
         public static IReadOnlyDictionary<string, string> KnownDeviations { get; } = new Dictionary<string, string>
         {
+            // D4: an Object without "signal" is an OPERATION_ERROR of the iteration (Strategy Context), as stock.strategy.002 checks
+            ["stock.context.005"] = "PARAMETERS ({ }) as the result of a strategy is not a signal object",
         };
 
         public static TheoryData<string> CaseIds()

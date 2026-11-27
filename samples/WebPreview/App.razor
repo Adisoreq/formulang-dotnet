@@ -258,7 +258,7 @@
         };
         watch.Stop();
 
-        return new Execution(kind, run, Engine.Diagnose(formula, environment), watch.Elapsed.TotalMilliseconds);
+        return new Execution(kind, run, Engine.Diagnose(formula, environment, kind), watch.Elapsed.TotalMilliseconds);
     }
 
     private bool Succeeded(Execution execution) => execution.Run switch

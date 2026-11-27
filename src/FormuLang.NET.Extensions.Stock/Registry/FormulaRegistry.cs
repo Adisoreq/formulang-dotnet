@@ -1,7 +1,10 @@
+using System.Text.RegularExpressions;
 using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Core.Primitives;
+using FormuLang.NET.Core.Processing;
 using FormuLang.NET.Core.Utils;
 using FormuLang.NET.Core.Validation;
+using FormuLang.NET.Extensions.Stock.Contexts;
 
 namespace FormuLang.NET.Extensions.Stock.Registry
 {
@@ -12,6 +15,22 @@ namespace FormuLang.NET.Extensions.Stock.Registry
     {
         public FormulaParameter(string name, double defaultValue)
             : this(name, Value.Number(defaultValue, StringConverter.NumberToString(defaultValue))) { }
+    }
+
+    /// <summary>
+    /// Identifiers of the registry definitions and of the <c>id</c> of the metadata.
+    /// </summary>
+    public static partial class FormulaIds
+    {
+        [GeneratedRegex("^[A-Za-z_][A-Za-z0-9_-]*$", RegexOptions.CultureInvariant)]
+        private static partial Regex Pattern();
+
+        /// <summary>
+        /// Whether a text is a valid identifier of a registry definition or of the <c>id</c> of the metadata: letters,
+        /// digits, <c>_</c> and <c>-</c>, starting with a letter or <c>_</c> (e.g. <c>"macd-ema200"</c>). It is always a
+        /// Text, never an identifier token, so it may contain <c>-</c> (since <c>stock-1.2</c>).
+        /// </summary>
+        public static bool IsValid(string id) => Pattern().IsMatch(id);
     }
 
     /// <summary>
@@ -40,8 +59,8 @@ namespace FormuLang.NET.Extensions.Stock.Registry
         /// </exception>
         public FormulaDefinition(string id, string formula, IEnumerable<FormulaParameter> parameters)
         {
-            if (!IdentifierValidator.Validate(id))
-                throw new ArgumentException($"\"{id}\" is not a valid identifier.", nameof(id));
+            if (!FormulaIds.IsValid(id))
+                throw new ArgumentException($"\"{id}\" is not a valid identifier of a definition.", nameof(id));
 
             Parameters = parameters.ToArray();
 
@@ -65,6 +84,41 @@ namespace FormuLang.NET.Extensions.Stock.Registry
             : this(id, formula, (IEnumerable<FormulaParameter>)parameters) { }
 
         public FormulaParameter? GetParameter(string name) => Parameters.FirstOrDefault(p => p.Name == name);
+
+        /// <summary>
+        /// A definition read from the metadata of its formula (docs/standards/stock/README.md, "Formula registry", since
+        /// <c>stock-1.2</c>): the identifier is <c>id</c>, the parameters are the keys of <c>parameters</c> with their
+        /// <c>default</c> values (<c>null</c> without a default).
+        /// </summary>
+        /// <exception cref="ArgumentException">The metadata block is not valid or has no valid <c>id</c>.</exception>
+        public static FormulaDefinition FromFormula(string formula)
+        {
+            var (id, _, parameters) = ReadDefinition(formula);
+            return new FormulaDefinition(id, formula, parameters);
+        }
+
+        /// <summary>
+        /// The identifier, the context and the parameters of the metadata of a formula.
+        /// </summary>
+        internal static (string Id, string? Context, FormulaParameter[] Parameters) ReadDefinition(string formula)
+        {
+            MetadataResult reading = MetadataReader.Read(formula);
+
+            if (reading.Error.IsFailed())
+                throw new ArgumentException(reading.Error.Message, nameof(formula));
+
+            IObject metadata = reading.Object;
+
+            if (!metadata.HasKey("id") || metadata.GetProperty("id").GetValue() is not { Raw: string id })
+                throw new ArgumentException("The metadata of the formula has no Text \"id\".", nameof(formula));
+
+            string? context = metadata.HasKey("context") ? metadata.GetProperty("context").GetValue().Raw as string : null;
+            FormulaParameter[] parameters = StrategyContext.ParameterDefaults(reading.Metadata)
+                .Select(p => new FormulaParameter(p.Key, p.Value ?? Value.Null("null")))
+                .ToArray();
+
+            return (id, context, parameters);
+        }
     }
 
     /// <summary>
@@ -128,5 +182,49 @@ namespace FormuLang.NET.Extensions.Stock.Registry
         /// Patterns, executed in a Pattern Context and loaded with <c>LOAD_PATTERN</c>.
         /// </summary>
         public FormulaCollection Patterns { get; } = new("Pattern");
+
+        /// <summary>
+        /// Adds a definition read from the metadata of its formula (since <c>stock-1.2</c>): to the indicators for the
+        /// <c>context</c> <c>"Stock.Indicator"</c>, to the patterns for <c>"Stock.Pattern"</c>.
+        /// </summary>
+        /// <exception cref="ArgumentException">
+        /// The metadata is not valid, has no <c>id</c>, or its <c>context</c> is not an indicator or a pattern.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">A definition with the identifier is already registered in the part.</exception>
+        public FormulaDefinition AddFormula(string formula)
+        {
+            var (id, context, parameters) = FormulaDefinition.ReadDefinition(formula);
+
+            FormulaCollection part = context switch
+            {
+                "Stock.Indicator" => Indicators,
+                "Stock.Pattern" => Patterns,
+                _ => throw new ArgumentException("The \"context\" of the metadata must be \"Stock.Indicator\" or \"Stock.Pattern\".", nameof(formula)),
+            };
+
+            var definition = new FormulaDefinition(id, formula, parameters);
+            part.Add(definition);
+            return definition;
+        }
+
+        /// <summary>
+        /// Adds the definition of an indicator or a pattern model (<see cref="Models.IndicatorDefinition"/>,
+        /// <see cref="Models.PatternDefinition"/>) to its part of the registry.
+        /// </summary>
+        /// <exception cref="ArgumentException">A strategy, which is not a part of the formula registry.</exception>
+        /// <exception cref="InvalidOperationException">A definition with the identifier is already registered in the part.</exception>
+        public FormulaDefinition AddDefinition(Models.Definition model)
+        {
+            FormulaCollection part = model.Kind switch
+            {
+                Models.DefinitionKind.Indicator => Indicators,
+                Models.DefinitionKind.Pattern => Patterns,
+                _ => throw new ArgumentException("Only indicators and patterns are a part of the formula registry.", nameof(model)),
+            };
+
+            FormulaDefinition definition = model.ToRegistryDefinition();
+            part.Add(definition);
+            return definition;
+        }
     }
 }

@@ -8,10 +8,23 @@ namespace FormuLang.NET.Core.Processing
         public TokenType Type { get; private set; }
         public string Value { get; private set; }
 
-        internal Token(TokenType type, string value)
+        /// <summary>
+        /// Line of the first character of the token, from 1 (the <see cref="Tokenizer"/> gives the line of the text it
+        /// tokenizes; the executor maps it to the original formula).
+        /// </summary>
+        public int? Line { get; }
+
+        /// <summary>
+        /// Column of the first character of the token, from 1.
+        /// </summary>
+        public int? Column { get; }
+
+        internal Token(TokenType type, string value, int? line = null, int? column = null)
         {
             Type = type;
             Value = value;
+            Line = line;
+            Column = column;
         }
 
         private string DisplayValue => 

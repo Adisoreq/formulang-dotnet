@@ -56,8 +56,9 @@ namespace FormuLang.NET.Core.Standards
             Fn("TRUNC", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Truncate, Math.Truncate), NumberArg("number"), PrecisionArg())),
 
             // 2. Logic and comparison
-            Fn("AND", Overload((a, _) => B(Bool(a[0]) && Bool(a[1])), BooleanArg("a"), BooleanArg("b"))),
-            Fn("OR", Overload((a, _) => B(Bool(a[0]) || Bool(a[1])), BooleanArg("a"), BooleanArg("b"))),
+            // Since core-1.2 the first false (AND) or true (OR) decides the result, and the arguments after it are discarded
+            ShortCircuitFunction.And,
+            ShortCircuitFunction.Or,
             Fn("XOR", Overload((a, _) => B(Bool(a[0]) ^ Bool(a[1])), BooleanArg("a"), BooleanArg("b"))),
             Fn("NOT", Overload((a, _) => B(!Bool(a[0])), BooleanArg("val"))),
             Fn("EQU", Overload((a, _) => B(ValuesEqual(a[0], a[1])), AnyArg("a"), AnyArg("b"))),
@@ -185,6 +186,7 @@ namespace FormuLang.NET.Core.Standards
 
             // 11. Added in core-1.1
             .. Core11Functions(),
+            .. Core12Functions(),
 
             // Target of the object literal translation: { k1: a, "k2": b } is OBJECT("k1",a,"k2",b)
             Fn("OBJECT", Overload((a, _) => CreateObject(a), ArgumentTemplate.Any("entries", optional: true, multiple: true))),

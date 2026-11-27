@@ -83,7 +83,7 @@ namespace FormuLang.NET.Core.Structures
             env.InitVariable(SerializationOptions.IncludeObjectClassName, Value.Boolean(false, "false"));
             env.InitVariable(SerializationOptions.MaxArrayPreviewName, Value.Number(-1, "-1"));
 
-            // core-1.1 is backward compatible: STANDARDS lists core-1.0 too, so REQUIRE "core-1.0" keeps working
+            // core-1.2 is backward compatible: STANDARDS lists core-1.0 and core-1.1 too, so REQUIRE "core-1.0" keeps working
             foreach (string compatible in FormuLang.NET.Core.Standards.CoreStandard.CompatibleIdentifiers)
                 env.RegisterStandard(compatible);
             env.RegisterStandard(FormuLang.NET.Core.Standards.CoreStandard.Instance);
@@ -164,6 +164,30 @@ namespace FormuLang.NET.Core.Structures
             if (!_functions.TryAdd(function.Name, function))
                 throw new InvalidOperationException($"Function \"{function.Name}\" is already defined.");
         }
+
+        /// <summary>
+        /// Number of the named functions and procedures; a prepared formula is prepared again when it changes.
+        /// </summary>
+        public int FunctionCount => _functions.Count;
+
+        private readonly Dictionary<string, Processing.MetadataChecker> _metadataCheckers = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Adds the check of a top-level key of the metadata (docs/core/metadata.md, "Metadata keys"): the key of an
+        /// extension standard (its name in lowercase, e.g. <c>stock</c>) or <c>x</c> of the host application. A value of
+        /// a wrong type is a <c>METADATA_TYPE</c> warning.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">The key already has a check.</exception>
+        public void RegisterMetadataChecker(string key, Processing.MetadataChecker checker)
+        {
+            if (!_metadataCheckers.TryAdd(key, checker))
+                throw new InvalidOperationException($"Metadata key \"{key}\" already has a check.");
+        }
+
+        /// <summary>
+        /// The check of a top-level metadata key, or <c>null</c>.
+        /// </summary>
+        public Processing.MetadataChecker? GetMetadataChecker(string key) => _metadataCheckers.GetValueOrDefault(key);
 
         /// <summary>
         /// Registers an extended type, e.g. <c>RegisterExtendedType("Stock.Candle")</c>.

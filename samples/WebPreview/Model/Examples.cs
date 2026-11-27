@@ -8,6 +8,7 @@ namespace WebPreview.Model
             new("I", "index of the current iteration (follows @array_indexing)"),
             new("N", "number of iterations"),
             new("PREV", "result of the previous iteration; null in the first one"),
+            new("HISTORY", "results of all the previous iterations (Core 1.2)"),
         ];
 
         private static readonly ContextConstant[] StockConstants =
@@ -20,6 +21,8 @@ namespace WebPreview.Model
             new("CLOSE", "closing prices"),
             new("VOLUME", "volumes (Number or null)"),
             new("TIME", "Unix time in milliseconds (Number or null)"),
+            new("TIMEFRAME", "timeframe of the candles: \"1d\" (Stock 1.2; the preview also provides \"1w\")"),
+            new("INSTRUMENT", "instrument of the candles: \"MOCK\" (Stock 1.2)"),
         ];
 
         private static readonly ContextConstant[] TimeConstants =
@@ -34,16 +37,18 @@ namespace WebPreview.Model
 
         public static readonly IReadOnlyList<StandardDefinition> Standards =
         [
-            new(StandardId.Core, "Core 1.0", "core-1.0",
+            new(StandardId.Core, "Core 1.2", "core-1.2",
             [
                 new(ContextKind.Default, StandardId.Core, "Default Context",
                     "Executes the formula once. The result is the value of the last sequence.", []),
                 new(ContextKind.Iteration, StandardId.Core, "Iteration Context",
-                    "Executes the formula once per iteration; every iteration starts without variables.", IterationConstants),
+                    "Executes the formula once per iteration; every iteration starts without variables, and keeps a state only in PREV, HISTORY and the memory (STORE, RECALL).",
+                    IterationConstants),
                 new(ContextKind.Time, StandardId.Core, "Time Context",
-                    "Executes the formula once per frame as time passes: animations, simulations, clocks.", TimeConstants),
+                    "Executes the formula once per frame as time passes: animations, simulations, clocks. The memory keeps a state between the frames.",
+                    TimeConstants),
             ]),
-            new(StandardId.Stock, "Stock 1.0", "stock-1.0",
+            new(StandardId.Stock, "Stock 1.2", "stock-1.2",
             [
                 new(ContextKind.Stock, StandardId.Stock, "Stock Context",
                     "Iterates over the candles of the chart; I is the current candle.", StockConstants),
@@ -61,12 +66,13 @@ namespace WebPreview.Model
                         new("PARAMETERS", "parameters of the pattern, completed with the defaults"),
                     ]),
                 new(ContextKind.Strategy, StandardId.Stock, "Strategy Context",
-                    "Returns a signal from SELL (-1) to BUY (1) for every candle.",
+                    "Returns a signal from SELL (-1) to BUY (1) for every candle, or a signal object { signal, reason, checks }.",
                     [
                         .. StockConstants,
                         new("BUY", "1"),
                         new("NEUTRAL", "0"),
                         new("SELL", "-1"),
+                        new("PARAMETERS", "parameters of the strategy: the defaults of its metadata (Stock 1.2)"),
                     ]),
             ]),
         ];
@@ -168,6 +174,33 @@ namespace WebPreview.Model
                 $x = (1 + 2
                 $y = "not closed
                 """),
+            new("metadata", "Metadata and warnings", "Core 1.2: a metadata block <@ { ... } @>, and the warnings of lines whose values are not used.",
+                """
+                <@ {
+                  id: "metadata-demo",
+                  name: "Metadata and warnings",
+                  description: "The metadata block is read before the evaluation and does not change the result.",
+                  context: "Default",
+                  parameters: { rate: { type: "Number", default: 0.05, min: 0, description: "Yearly interest rate" } }
+                } @>
+                # Core 1.2: the block above is the metadata; the panel below the result shows it.
+                $capital = 1000
+                $capital * 2       # UNUSED_VALUE: the value of this line is not used
+                $years = 3
+                $result = $capital * (1 + 0.05) ^ $years
+                - 1                # CONTINUED_LINE: a new line ends the previous sequence
+                ROUND($result, 2)
+                """),
+            new("logic", "Short circuit", "Core 1.2: AND and OR stop at the first false or true, and take many arguments.",
+                """
+                # Core 1.2: AND and OR stop at the first false / true, and take many arguments.
+                $v = null
+                $guard = ISNULL($v) || $v > 10          # true: the Error of null > 10 is discarded
+                $safe = NOT(ISNULL($v)) && $v > 10      # false
+                $all = AND(1 < 2, 2 < 3, 3 < 4)
+                $any = OR(false, false, true)
+                [$guard, $safe, $all, $any, false && ERROR("never returned")]
+                """),
         ];
 
         private static readonly Example[] IterationExamples =
@@ -176,6 +209,24 @@ namespace WebPreview.Model
             new("powers", "Powers of two", "PREV carries the result of the previous iteration.", "IF(ISNULL(PREV), 1, PREV * 2)"),
             new("fibonacci", "Fibonacci", "A pair of numbers carried in PREV.", "IF(ISNULL(PREV), [0, 1], [PREV[1], PREV[0] + PREV[1]])"),
             new("progress", "Progress", "Text built from I and N.", "TEXT(ROUND((I + 1) / N * 100, 0)) + \"%\""),
+            new("memory", "Memory", "Core 1.2: STORE, RECALL and CLEAR keep a state between the iterations.",
+                """
+                # Core 1.2: the memory keeps a state between iterations; a write is visible from the next one.
+                $sum = RECALL("sum", 0) + I
+                STORE("sum", $sum)
+
+                # Every 5th iteration starts the count again: a write in the branch that is not selected is discarded
+                IF(MOD(I + 1, 5) == 0, CLEAR("sum"), 0)
+
+                FORMAT("I = {}: sum = {}, stored before = {}", [I, $sum, RECALL("sum", 0)])
+                """),
+            new("history", "History", "Core 1.2: HISTORY, the results of all the previous iterations.",
+                """
+                # Core 1.2: HISTORY holds the results of all the previous iterations; its last element is PREV.
+                $value = (I + 1) ^ 2
+                $evens = LEN(FILTER(HISTORY, (r) => ISEVEN(r)))
+                IF(LEN(HISTORY) == 0, $value, IF($evens >= 3, $value * -1, $value))
+                """),
         ];
 
         private static readonly Example[] TimeExamples =
@@ -195,6 +246,14 @@ namespace WebPreview.Model
                 $fps = IF(DTIME_S == 0, 0, 1 / DTIME_S)
                 FORMAT("{:.1} s · frame {} · {:.0} fps", [TIME_S, FRAME, $fps])
                 """),
+            new("distance", "Distance", "Core 1.2: the memory sums the distance travelled in every frame.",
+                """
+                # Core 1.2: the memory of a Time Context keeps a state between the frames.
+                $speed = 3 + SIN(TIME_S)                 # units per second
+                $distance = RECALL("distance", 0) + $speed * DTIME_S
+                STORE("distance", $distance)
+                FORMAT("{:.2} units after {:.1} s", [$distance, TIME_S])
+                """),
         ];
 
         // Stock
@@ -206,6 +265,33 @@ namespace WebPreview.Model
                 "IF(I == @array_indexing, 0, ROUND((CLOSE[I] - CLOSE[I - 1]) / CLOSE[I - 1] * 100, 2))"),
             new("candle", "Current candle", "The candle itself, as an Object<Stock.Candle>.", "@include_object_class = true\nCANDLES[I]"),
             new("running-max", "Running maximum", "The highest close so far, carried in PREV.", "IF(ISNULL(PREV), CLOSE[I], MAX(PREV, CLOSE[I]))"),
+            new("series", "Series functions", "Stock 1.2: HIGHEST, LOWEST, RISING, FALLING, READY, BARS_SINCE and VALUE_WHEN.",
+                """
+                # Stock 1.2: series functions at the current candle; missing data gives false or null, never an Error.
+                $bullish = MAP(CANDLES, (c) => c.close > c.open)
+                {
+                  high10: HIGHEST(HIGH, 10),
+                  low10: LOWEST(LOW, 10),
+                  rising3: RISING(CLOSE, 3),
+                  falling3: FALLING(CLOSE, 3),
+                  ready20: READY(CLOSE, 20),
+                  barsSinceBullish: BARS_SINCE($bullish),
+                  lastBullishClose: VALUE_WHEN($bullish, CLOSE)
+                }
+                """),
+            new("weekly", "Weekly candles", "Stock 1.2: LOAD_CANDLES of another timeframe, TIMEFRAME and INSTRUMENT.",
+                """
+                # Stock 1.2: candles of another timeframe. The chart is daily (TIMEFRAME); the preview also provides "1w".
+                # The aligned series has one element for every daily candle: the last week closed at it, or null.
+                $week = LOAD_CANDLES("1w")[I]
+                $closed = LOAD_CANDLES("1w", { align: false })
+                {
+                  timeframe: TIMEFRAME,
+                  instrument: INSTRUMENT,
+                  closedWeeks: LEN($closed),
+                  weekClose: IF(ISNULL($week), null, $week.close)
+                }
+                """),
             new("direction", "Direction", "IS_BULLISH and IS_BEARISH; a doji is neither.",
                 "IF(IS_BULLISH(CANDLES[I]), \"bullish\", IF(IS_BEARISH(CANDLES[I]), \"bearish\", \"doji\"))"),
         ];
@@ -306,19 +392,28 @@ namespace WebPreview.Model
                 ],
                 SeriesMode.Multiple, IndicatorType.Oscillator),
             new("rsi", "Relative strength index",
-                "Average gain against average loss of the last `period` changes, from 0 to 100 (simple averages).",
+                "Wilder's RSI, from 0 to 100; the averages are kept in the memory (Stock 1.2).",
                 """
-                $period = PARAMETERS.period
-                $ready = I - @array_indexing >= $period
+                # Wilder's RSI (Stock 1.2): the averages are kept in the memory, so the result is only the RSI.
+                $p = PARAMETERS.period
+                $n = I - @array_indexing                 # number of changes up to the current candle
+                $change = IF($n == 0, 0, SOURCE[I] - SOURCE[I - 1])
+                $gain = MAX($change, 0)
+                $loss = MAX(-$change, 0)
 
-                # Changes of the closing price within the window
-                $from = MAX(I - $period + 1, @array_indexing + 1)
-                $changes = MAP(SEQ(MAX(I - $from + 1, 0), 1, $from), (k) => CLOSE[k] - CLOSE[k - 1])
+                # Warm-up: the sums of the first `period` changes
+                $sumGain = RECALL("sumGain", 0) + $gain
+                $sumLoss = RECALL("sumLoss", 0) + $loss
+                STORE("sumGain", $sumGain)
+                STORE("sumLoss", $sumLoss)
 
-                $gain = SUM(MAP($changes, (c) => MAX(c, 0))) / $period
-                $loss = SUM(MAP($changes, (c) => MAX(-c, 0))) / $period
+                # The mean of the first `period` changes, then a smoothing of the previous average
+                $avgGain = IF($n < $p, null, IF($n == $p, $sumGain / $p, (RECALL("avgGain") * ($p - 1) + $gain) / $p))
+                $avgLoss = IF($n < $p, null, IF($n == $p, $sumLoss / $p, (RECALL("avgLoss") * ($p - 1) + $loss) / $p))
+                STORE("avgGain", $avgGain)
+                STORE("avgLoss", $avgLoss)
 
-                IF(NOT($ready), null, IF($loss == 0, 100, 100 - 100 / (1 + $gain / $loss)))
+                IF(ISNULL($avgGain), null, IF($avgLoss == 0, 100, 100 - 100 / (1 + $avgGain / $avgLoss)))
                 """,
                 "RSI",
                 [new("period", "Period", 14)],
@@ -399,20 +494,13 @@ namespace WebPreview.Model
 
         public static readonly IReadOnlyList<StrategyConfig> Strategies =
         [
-            new("crossover", "Moving average crossover", "Buys when the fast SMA crosses above the slow SMA, sells when it crosses below.",
+            new("crossover", "Moving average crossover", "Buys when the fast SMA crosses above the slow SMA (CROSSOVER), sells when it crosses below.",
                 """
+                # Stock 1.2: CROSSOVER and CROSSUNDER are false on the first candle and while a value is null.
                 $fast = LOAD_INDICATOR("SMA", { period: 10 })
                 $slow = LOAD_INDICATOR("SMA", { period: 30 })
 
-                $p = MAX(I - 1, @array_indexing)
-                $values = [$fast[$p], $slow[$p], $fast[I], $slow[I]]
-                $ready = AND(I > @array_indexing, LEN(FILTER($values, (e) => ISNULL(e))) == 0)
-
-                IF(NOT($ready),
-                   NEUTRAL,
-                   IF(AND($fast[$p] <= $slow[$p], $fast[I] > $slow[I]),
-                      BUY,
-                      IF(AND($fast[$p] >= $slow[$p], $fast[I] < $slow[I]), SELL, NEUTRAL)))
+                IF(CROSSOVER($fast, $slow), BUY, IF(CROSSUNDER($fast, $slow), SELL, NEUTRAL))
                 """,
                 1, 5),
             new("bollinger-reversion", "Bollinger reversion", "Expects the price to return inside the Bollinger bands.",
@@ -445,6 +533,48 @@ namespace WebPreview.Model
                    IF(AND($engulfing, CLOSE[I] > $sma), BUY, NEUTRAL))
                 """,
                 1, 4),
+            new("score", "Score of conditions", "Stock 1.2: a signal object with its reason and checks, SCORE, and parameters from the metadata.",
+                """
+                <@ {
+                  id: "rsi-trend-score",
+                  name: "Score of conditions",
+                  context: "Stock.Strategy",
+                  parameters: {
+                    trend: { type: "Number", default: 30, min: 2, description: "Period of the trend SMA" },
+                    oversold: { type: "Number", default: 45, min: 0, max: 100 }
+                  },
+                  stock: { checks: { trend: "Close above the SMA", rsi: "RSI leaves the oversold zone", bullish: "Bullish candle" } }
+                } @>
+                # Stock 1.2: a signal object with the checks that led to it; SCORE is the share of the met conditions.
+                $sma = LOAD_INDICATOR("SMA", { period: PARAMETERS.trend })
+                $rsi = LOAD_INDICATOR("RSI", { period: 14 })
+
+                $buy = {
+                  trend: READY($sma, 1) && CLOSE[I] > $sma[I],
+                  rsi: CROSSOVER($rsi, PARAMETERS.oversold),
+                  bullish: IS_BULLISH(CANDLES[I])
+                }
+
+                # At least 2 of the 3 conditions: the score is the strength of the signal
+                IF(SCORE($buy) >= 2 / 3,
+                   { signal: SCORE($buy), reason: FORMAT("{:.0}% of the conditions are met.", [SCORE($buy) * 100]),
+                     checks: $buy, stop: LOWEST(LOW, 5) },
+                   { signal: NEUTRAL, checks: $buy })
+                """,
+                1, 3),
+            new("weekly-trend", "Weekly trend", "Stock 1.2: daily crossings of the EMA in the direction of the weekly SMA (another timeframe).",
+                """
+                # Stock 1.2: the trend of the weekly candles filters the daily signals. A week is used only when it is closed,
+                # so the strategy never sees the future.
+                $weekly = LOAD_INDICATOR("SMA", { period: 4 }, { timeframe: "1w" })
+                $week = LOAD_CANDLES("1w")
+                $uptrend = READY($weekly, 1) && $week[I].close > $weekly[I]
+                $downtrend = READY($weekly, 1) && $week[I].close < $weekly[I]
+
+                $fast = LOAD_INDICATOR("EMA", { period: 12 })
+                IF($uptrend && CROSSOVER(CLOSE, $fast), BUY, IF($downtrend && CROSSUNDER(CLOSE, $fast), SELL, NEUTRAL))
+                """,
+                0.8, 3),
             new(NewFormula, "New strategy", "An empty strategy: return a signal from SELL (-1) to BUY (1) for every candle.", "",
                 1, 1),
         ];

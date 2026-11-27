@@ -4,6 +4,20 @@ namespace WebPreview.Tests
     public class CandlesTests
     {
         [Fact]
+        public void WeeklyCandlesAreOnlyTheClosedWeeks()
+        {
+            const double day = 86_400_000;
+            var candles = Candles.Generate(16, 3);
+            var weeks = Candles.Aggregate(candles, 7 * day);
+
+            Assert.Equal(2, weeks.Count); // the third week has only 2 of its 7 days
+            Assert.Equal(candles[0].Time, weeks[0].Time);
+            Assert.Equal(candles[6].Close, weeks[0].Close);
+            Assert.Equal(candles.Take(7).Max(c => c.High), weeks[0].High);
+            Assert.Equal(candles.Skip(7).Take(7).Sum(c => c.Volume), weeks[1].Volume);
+        }
+
+        [Fact]
         public void SameSeedGivesSameCandles()
             => Assert.Equal(Candles.Generate(50, 42), Candles.Generate(50, 42));
 

@@ -6,7 +6,7 @@ namespace FormuLang.NET.Core.Processing
 {
     /// <summary>
     /// Executes a parsed formula frame by frame in a <see cref="TimeContext"/>. Created by
-    /// <see cref="Executor.CreateFrameRunner"/>; the host application decides when the next frame starts and when the
+    /// <see cref="Executor.CreateFrameRunner(string, TimeContext)"/>; the host application decides when the next frame starts and when the
     /// frames stop.
     /// </summary>
     public sealed class FrameRunner

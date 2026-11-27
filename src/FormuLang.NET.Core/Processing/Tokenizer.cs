@@ -11,6 +11,8 @@ namespace FormuLang.NET.Core.Processing
     /// <remarks>
     /// A text literal is emitted as three tokens: an opening <c>"</c> operator, a Text token with the processed content
     /// (escape sequences resolved) and a closing <c>"</c> operator. Lines are separated by a <c>\n</c> operator token.
+    /// Every token has the line and the column of its first character in the tokenized text (the new line token: one
+    /// column after the end of its line).
     /// </remarks>
     public class Tokenizer : ITokenizer
     {
@@ -32,6 +34,10 @@ namespace FormuLang.NET.Core.Processing
             private char Current => line[_index];
             private char? Previous => _index > 0 ? line[_index - 1] : null;
             private char? Next => _index + 1 < line.Length ? line[_index + 1] : null;
+
+            private void Open(TokenType mode) => state.Open(mode, lineNumber, _index + 1);
+
+            private void Insert(TokenType type, string value) => state.Insert(type, value, lineNumber, _index + 1);
 
             private TokenizationException SyntaxError(string message)
                 => new(Errors.SyntaxError($"{message} (line {lineNumber}, column {_index + 1})."));
@@ -78,28 +84,28 @@ namespace FormuLang.NET.Core.Processing
 
                 if (StringUtils.IsCharDigit(c))
                 {
-                    state.Open(TokenType.Number);
+                    Open(TokenType.Number);
                     state.Append(c);
                 }
                 else if (StringUtils.IsCharIdentifierStart(c))
                 {
-                    state.Open(TokenType.Identifier);
+                    Open(TokenType.Identifier);
                     state.Append(c);
                 }
                 else if (c == TextDelimiter)
                 {
-                    state.Insert(TokenType.Operator, c.ToString());
-                    state.Open(TokenType.Text);
+                    Insert(TokenType.Operator, c.ToString());
+                    state.Open(TokenType.Text, lineNumber, _index + 2);
                 }
                 else if (c == '.' && Next.HasValue && StringUtils.IsCharDigit(Next.Value))
                 {
-                    state.Open(TokenType.Number);
+                    Open(TokenType.Number);
                     state.Append(c);
                     state.DotPresent = true;
                 }
                 else
                 {
-                    state.Open(TokenType.Operator);
+                    Open(TokenType.Operator);
                     state.Append(c);
 
                     // A character that cannot begin a 2-character operator is closed immediately
@@ -217,7 +223,7 @@ namespace FormuLang.NET.Core.Processing
                 else if (c == TextDelimiter)
                 {
                     state.Close();
-                    state.Insert(TokenType.Operator, c.ToString());
+                    Insert(TokenType.Operator, c.ToString());
                 }
                 else if (c == EscapeSymbol)
                 {
@@ -263,7 +269,7 @@ namespace FormuLang.NET.Core.Processing
                     new Run(lines[i], i + 1, state).Execute();
 
                     if (i < lines.Length - 1)
-                        state.Insert(TokenType.Operator, "\n");
+                        state.Insert(TokenType.Operator, "\n", i + 1, lines[i].Length + 1);
                 }
             }
             catch (TokenizationException ex)

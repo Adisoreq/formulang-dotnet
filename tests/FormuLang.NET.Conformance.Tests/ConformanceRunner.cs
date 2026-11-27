@@ -1,9 +1,12 @@
 using FormuLang.NET.Abstractions.Primitives;
+using FormuLang.NET.Abstractions.Structures;
+using FormuLang.NET.Core.Model;
 using FormuLang.NET.Core.Primitives;
 using FormuLang.NET.Core.Processing;
 using FormuLang.NET.Core.Structures;
 using FormuLang.NET.Extensions.Stock;
 using FormuLang.NET.Extensions.Stock.Contexts;
+using FormuLang.NET.Extensions.Stock.Models;
 using FormuLang.NET.Extensions.Stock.Registry;
 using System.Text.Json;
 using Env = FormuLang.NET.Core.Structures.Environment;
@@ -22,7 +25,8 @@ namespace FormuLang.NET.Conformance.Tests
         JsonElement? Environment,
         JsonElement? Registry,
         string Formula,
-        JsonElement Expected);
+        JsonElement Expected,
+        JsonElement? Given = null);
 
     /// <summary>
     /// Runner of the language-independent conformance tests of the standard (FormuLang <c>tests/README.md</c>): builds
@@ -33,15 +37,11 @@ namespace FormuLang.NET.Conformance.Tests
     {
         /// <summary>
         /// Standards implemented by the library. A case that requires another standard is skipped. The 1.1 versions are
-        /// backward compatible, so the cases of the 1.0 versions apply too.
+        /// backward compatible, so the cases of the earlier versions apply too.
         /// </summary>
-        public static IReadOnlySet<string> SupportedStandards { get; } = new HashSet<string>
-        {
-            "core-1.0",
-            Core.Standards.CoreStandard.Identifier,
-            "stock-1.0",
-            StockStandard.Identifier,
-        };
+        public static IReadOnlySet<string> SupportedStandards { get; } = new HashSet<string>(
+            [Core.Standards.CoreStandard.Identifier, .. Core.Standards.CoreStandard.CompatibleIdentifiers,
+             StockStandard.Identifier, .. StockStandard.CompatibleIdentifiers]);
 
         public static string Directory { get; } = Path.Combine(AppContext.BaseDirectory, "conformance");
 
@@ -90,7 +90,8 @@ namespace FormuLang.NET.Conformance.Tests
                         Pick("environment"),
                         Pick("registry"),
                         ReadFormula(item.GetProperty("formula")),
-                        item.GetProperty("expected"));
+                        item.GetProperty("expected"),
+                        item.TryGetProperty("given", out JsonElement given) ? given : null);
 
                     if (!cases.TryAdd(id, testCase))
                         throw new InvalidDataException($"The case identifier \"{id}\" is used more than once.");
@@ -151,6 +152,35 @@ namespace FormuLang.NET.Conformance.Tests
                         problems.Add($"Expected the message \"{message.GetString()}\", got \"{result.Error.Message}\".");
                     break;
 
+                case "metadata":
+                    MetadataResult metadata = Executor.Create().ReadMetadata(testCase.Formula, environment);
+                    if (metadata.Error.IsFailed())
+                        problems.Add($"The metadata reading failed: {metadata.Error.Name}: {metadata.Error.Message}");
+                    else if (!ValueEquals(metadata.Metadata, expected.Value))
+                        problems.Add($"Expected the metadata {expected.Value}, got {metadata.Metadata}.");
+                    break;
+
+                case "warnings":
+                    PreparedFormula prepared = Executor.Create().Prepare(testCase.Formula, CreateContext(testCase, environment));
+                    string[] codes = prepared.Warnings.Select(w => w.Code).ToArray();
+                    string[] expectedCodes = expected.Value.EnumerateArray().Select(c => c.GetString()!).ToArray();
+
+                    if (prepared.Failure != null)
+                        problems.Add($"The preparation failed: {prepared.Error.Name}: {prepared.Error.Message}");
+                    else if (!codes.SequenceEqual(expectedCodes))
+                        problems.Add($"Expected the warnings [{string.Join(", ", expectedCodes)}], got [{string.Join("; ", prepared.Warnings)}].");
+                    break;
+
+                case "definition":
+                case "invalid":
+                case "parameters":
+                case "problems":
+                case "outputs":
+                case "matches":
+                case "signals":
+                    RunModel(testCase, environment, expected, problems);
+                    break;
+
                 default:
                     problems.Add($"Unknown expected outcome \"{expected.Name}\".");
                     break;
@@ -159,7 +189,204 @@ namespace FormuLang.NET.Conformance.Tests
             return problems;
         }
 
+        // Formula models (docs/implementation/formula_models.md)
+
+        private static void RunModel(ConformanceCase testCase, Env environment, JsonProperty expected, List<string> problems)
+        {
+            Definition definition;
+
+            try
+            {
+                definition = Definition.FromFormula(testCase.Formula, environment);
+            }
+            catch (InvalidDefinitionException invalid)
+            {
+                if (expected.Name != "invalid")
+                    problems.Add($"The formula is not a valid definition: {invalid.ReasonCode}: {invalid.Message}");
+                else if (invalid.ReasonCode != expected.Value.GetString())
+                    problems.Add($"Expected the reason {expected.Value.GetString()}, got {invalid.ReasonCode}: {invalid.Message}");
+                return;
+            }
+
+            if (expected.Name == "invalid")
+            {
+                problems.Add($"Expected the reason {expected.Value.GetString()}, but the formula is a valid definition.");
+                return;
+            }
+
+            if (expected.Name == "definition")
+            {
+                CompareDefinition(definition, expected.Value, problems);
+                return;
+            }
+
+            ParameterNormalization normalization = definition.Normalize(testCase.Given ?? default);
+
+            if (expected.Name == "problems")
+            {
+                string[] actual = normalization.Problems.Select(p => $"{p.Key}:{p.CodeName}").ToArray();
+                string[] wanted = expected.Value.EnumerateArray()
+                    .Select(p => $"{p.GetProperty("key").GetString()}:{p.GetProperty("code").GetString()}").ToArray();
+
+                if (!actual.SequenceEqual(wanted))
+                    problems.Add($"Expected the problems [{string.Join(", ", wanted)}], got [{string.Join(", ", actual)}].");
+                return;
+            }
+
+            if (normalization.Parameters is not IObject parameters)
+            {
+                problems.Add($"The normalization failed: {string.Join(" ", normalization.Problems)}");
+                return;
+            }
+
+            if (expected.Name == "parameters")
+            {
+                if (!ValueEquals(Value.Object(parameters, ""), expected.Value))
+                    problems.Add($"Expected the parameters {expected.Value}, got {Parameters.Key(parameters)}.");
+                return;
+            }
+
+            Instance instance = definition.CreateInstance(parameters);
+            Chart chart = ReadChart(testCase.Context);
+
+            switch (expected.Name, instance)
+            {
+                case ("outputs", IndicatorInstance indicator):
+                    IndicatorSeries series = indicator.Compute(environment, chart);
+                    if (!series.Successful)
+                    {
+                        problems.Add($"The run failed: {series.Error.Name}: {series.Error.Message}");
+                        return;
+                    }
+
+                    JsonProperty[] outputs = expected.Value.EnumerateObject().ToArray();
+                    if (!series.Keys.SequenceEqual(outputs.Select(o => o.Name)))
+                        problems.Add($"Expected the outputs [{string.Join(", ", outputs.Select(o => o.Name))}], got [{string.Join(", ", series.Keys)}].");
+
+                    foreach (JsonProperty output in outputs)
+                    {
+                        if (series.TryGetOutput(output.Name, out IReadOnlyList<double?> values) && !NumbersEqual(values, output.Value))
+                            problems.Add($"Output {output.Name}: expected {output.Value}, got [{string.Join(", ", values.Select(v => v?.ToString() ?? "null"))}].");
+                    }
+                    break;
+
+                case ("matches", PatternInstance pattern):
+                    PatternSeries matches = pattern.Compute(environment, chart);
+                    bool[] wanted = expected.Value.EnumerateArray().Select(m => m.GetBoolean()).ToArray();
+
+                    if (!matches.Successful)
+                        problems.Add($"The run failed: {matches.Error.Name}: {matches.Error.Message}");
+                    else if (!matches.Matches.SequenceEqual(wanted))
+                        problems.Add($"Expected the matches {expected.Value}, got [{string.Join(", ", matches.Matches)}].");
+                    break;
+
+                case ("signals", StrategyInstance strategy):
+                    StrategySignals signals = strategy.Compute(environment, chart);
+                    if (!signals.Successful)
+                    {
+                        problems.Add($"The run failed: {signals.Error.Name}: {signals.Error.Message}");
+                        return;
+                    }
+
+                    JsonElement[] expectedSignals = expected.Value.EnumerateArray().ToArray();
+                    if (signals.Signals.Count != expectedSignals.Length)
+                        problems.Add($"Expected {expectedSignals.Length} signals, got {signals.Signals.Count}.");
+
+                    for (int i = 0; i < Math.Min(signals.Signals.Count, expectedSignals.Length); i++)
+                        CompareSignal(signals.Signals[i], expectedSignals[i], $"signal {i}: ", problems);
+                    break;
+
+                default:
+                    problems.Add($"The outcome \"{expected.Name}\" does not fit a {definition.Kind} definition.");
+                    break;
+            }
+        }
+
+        private static void CompareDefinition(Definition definition, JsonElement expected, List<string> problems)
+        {
+            void Check(string name, string? actual)
+            {
+                JsonElement value = expected.GetProperty(name);
+                string? wanted = value.ValueKind == JsonValueKind.Null ? null : value.GetString();
+                if (actual != wanted)
+                    problems.Add($"Expected the {name} {wanted ?? "null"}, got {actual ?? "null"}.");
+            }
+
+            void CheckKeys(string name, IEnumerable<string>? actual)
+            {
+                JsonElement value = expected.GetProperty(name);
+                string[]? wanted = value.ValueKind == JsonValueKind.Null ? null : value.EnumerateArray().Select(k => k.GetString()!).ToArray();
+                string[]? keys = actual?.ToArray();
+
+                if ((wanted == null) != (keys == null) || (wanted != null && !wanted.SequenceEqual(keys!)))
+                    problems.Add($"Expected the {name} [{(wanted == null ? "null" : string.Join(", ", wanted))}], got [{(keys == null ? "null" : string.Join(", ", keys))}].");
+            }
+
+            Check("kind", definition.Kind.ToString());
+            Check("id", definition.Id);
+            Check("name", definition.Name);
+            Check("category", definition.Category);
+            CheckKeys("parameters", definition.Parameters.Select(p => p.Key));
+            CheckKeys("outputs", (definition as IndicatorDefinition)?.Outputs?.Select(o => o.Key));
+            CheckKeys("checks", (definition as StrategyDefinition)?.Checks?.Select(c => c.Key));
+        }
+
+        private static void CompareSignal(StrategySignal signal, JsonElement expected, string prefix, List<string> problems)
+        {
+            if (signal.Index != expected.GetProperty("index").GetInt32())
+                problems.Add($"{prefix}expected the index {expected.GetProperty("index")}, got {signal.Index}.");
+
+            JsonElement time = expected.GetProperty("time");
+            if (signal.Time != (time.ValueKind == JsonValueKind.Null ? null : time.GetDouble()))
+                problems.Add($"{prefix}expected the time {time}, got {signal.Time}.");
+
+            if (signal.Signal != expected.GetProperty("signal").GetDouble())
+                problems.Add($"{prefix}expected the signal {expected.GetProperty("signal")}, got {signal.Signal}.");
+
+            string? reason = expected.TryGetProperty("reason", out JsonElement r) ? r.GetString() : null;
+            if (signal.Reason != reason)
+                problems.Add($"{prefix}expected the reason {reason ?? "none"}, got {signal.Reason ?? "none"}.");
+
+            string Serialize(object? value) => JsonSerializer.Serialize(value);
+
+            string checks = expected.TryGetProperty("checks", out JsonElement c) ? c.GetRawText().Replace(" ", "") : "null";
+            if (Serialize(signal.Checks) != checks)
+                problems.Add($"{prefix}expected the checks {checks}, got {Serialize(signal.Checks)}.");
+
+            string extra = expected.TryGetProperty("extra", out JsonElement e) ? e.GetRawText().Replace(" ", "") : "{}";
+            if (Serialize(signal.Extra) != extra)
+                problems.Add($"{prefix}expected the extra keys {extra}, got {Serialize(signal.Extra)}.");
+        }
+
+        private static bool NumbersEqual(IReadOnlyList<double?> actual, JsonElement expected)
+        {
+            JsonElement[] items = expected.EnumerateArray().ToArray();
+
+            return actual.Count == items.Length && actual.Zip(items).All(pair => pair.First is double number
+                ? ValueEquals(Value.Number(number), pair.Second)
+                : pair.Second.ValueKind == JsonValueKind.Null);
+        }
+
+        private static Chart ReadChart(JsonElement context) => new(context.GetProperty("candles").EnumerateArray().Select(ReadCandle).ToArray())
+        {
+            Timeframe = OptionalText(context, "timeframe"),
+            Instrument = OptionalText(context, "instrument"),
+            TimeframeLength = context.TryGetProperty("timeframe_length", out JsonElement length) ? length.GetDouble() : null,
+            Timeframes = ReadTimeframes(context),
+        };
+
         private static string ContextType(ConformanceCase testCase) => testCase.Context.GetProperty("type").GetString()!;
+
+        /// <summary>
+        /// A context of the type of the case, e.g. for the warnings of the preparation.
+        /// </summary>
+        private static IContext CreateContext(ConformanceCase testCase, Env environment) => ContextType(testCase) switch
+        {
+            "Default" => Context.Create(environment),
+            "Iteration" => IterationContext.Create(environment, testCase.Context.GetProperty("n").GetInt32()),
+            "Time" => TimeContext.Create(environment),
+            _ => CreateStockContext(testCase.Context, environment, Executor.Create()),
+        };
 
         private static ExecutionResult ExecuteSingle(ConformanceCase testCase, Env environment)
         {
@@ -202,19 +429,38 @@ namespace FormuLang.NET.Conformance.Tests
             Candle[] candles = context.GetProperty("candles").EnumerateArray().Select(ReadCandle).ToArray();
             IObject? parameters = context.TryGetProperty("parameters", out JsonElement p) ? (IObject)ToValue(p).Raw! : null;
 
+            // stock-1.2: TIMEFRAME, INSTRUMENT and other timeframes
+            var options = new StockContextOptions
+            {
+                Executor = executor,
+                Timeframe = OptionalText(context, "timeframe"),
+                Instrument = OptionalText(context, "instrument"),
+                TimeframeLength = context.TryGetProperty("timeframe_length", out JsonElement length) ? length.GetDouble() : null,
+                Timeframes = ReadTimeframes(context),
+            };
+
             return context.GetProperty("type").GetString() switch
             {
-                "Stock" => StockContext.Create(environment, candles, executor),
-                "Indicator" => IndicatorContext.Create(environment, candles, parameters,
+                "Stock" => StockContext.Create(environment, candles, options),
+                "Indicator" => IndicatorContext.Create(environment, candles, options, parameters,
                     context.TryGetProperty("source", out JsonElement source)
                         ? source.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.Null ? (double?)null : e.GetDouble()).ToArray()
-                        : null,
-                    executor),
-                "Pattern" => PatternContext.Create(environment, candles, executor, parameters),
-                "Strategy" => StrategyContext.Create(environment, candles, executor),
+                        : null),
+                "Pattern" => PatternContext.Create(environment, candles, options, parameters),
+                "Strategy" => StrategyContext.Create(environment, candles, options, parameters),
                 var type => throw new InvalidDataException($"Unknown context type \"{type}\"."),
             };
         }
+
+        private static string? OptionalText(JsonElement element, string key)
+            => element.TryGetProperty(key, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+        private static Dictionary<string, TimeframeCandles>? ReadTimeframes(JsonElement context)
+            => context.TryGetProperty("timeframes", out JsonElement timeframes)
+                ? timeframes.EnumerateObject().ToDictionary(t => t.Name, t => new TimeframeCandles(
+                    t.Value.GetProperty("length").GetDouble(),
+                    t.Value.GetProperty("candles").EnumerateArray().Select(ReadCandle).ToArray()))
+                : null;
 
         private static Candle ReadCandle(JsonElement candle)
         {

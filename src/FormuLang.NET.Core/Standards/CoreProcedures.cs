@@ -8,7 +8,8 @@ using static FormuLang.NET.Core.Standards.FunctionHelpers;
 namespace FormuLang.NET.Core.Standards
 {
     /// <summary>
-    /// Built-in procedures of the Core standard (docs/standards/core/procedures).
+    /// Built-in procedures of the Core standard (docs/standards/core/procedures): <c>SET</c>, <c>INIT</c>,
+    /// <c>COND_SET</c>, <c>REQUIRE</c>, and since <c>core-1.2</c> <c>STORE</c> and <c>CLEAR</c>.
     /// Every procedure returns the <c>SUCCESS</c> Error when it finishes correctly.
     /// </summary>
     public static partial class CoreProcedures
@@ -23,7 +24,53 @@ namespace FormuLang.NET.Core.Standards
                 Overload((a, c) => Require([Txt(a[0])], c), TextArg("standard")),
                 Overload((a, c) => Require(Arr(a[0]).Select(Txt), c), ArgumentTemplate.ArrayOf("standards", Types.Text)),
             ]),
+            new Procedure("STORE", parameterCount: 2, takesVariable: false,
+            [
+                Overload((a, c) => Store(Txt(a[0]), a[1], c), TextArg("key"), AnyArg("value")),
+            ]) { WritesMemoryOnly = true },
+            new Procedure("CLEAR", parameterCount: 1, takesVariable: false,
+            [
+                Overload((a, c) => Clear(Txt(a[0]), c), TextArg("key")),
+                Overload((_, c) => Clear(null, c)),
+            ]) { WritesMemoryOnly = true },
         ];
+
+        // Memory (core-1.2): docs/core/context.md, "Memory"
+
+        /// <summary>
+        /// The memory of the context, or the <c>OPERATION_ERROR</c> of a context without one (the Default Context).
+        /// </summary>
+        internal static IMemory? MemoryOf(IContext context, string name, out IValue? error)
+        {
+            IMemory? memory = context.Memory;
+            error = memory == null
+                ? OperationError($"\"{name}\" can be used only in a context with a memory (an Iteration or Time Context).")
+                : null;
+            return memory;
+        }
+
+        // STORE(key, value): docs/standards/core/procedures/STORE.md
+        private static IValue Store(string key, IValue value, IContext context)
+        {
+            if (MemoryOf(context, "STORE", out IValue? error) is not IMemory memory)
+                return error!;
+
+            if (value.Type.Base == Types.DelegateName)
+                return ArgumentError("A Delegate cannot be stored in the memory.");
+
+            memory.Store(key, value);
+            return Success();
+        }
+
+        // CLEAR(key) and CLEAR(): docs/standards/core/procedures/CLEAR.md
+        private static IValue Clear(string? key, IContext context)
+        {
+            if (MemoryOf(context, "CLEAR", out IValue? error) is not IMemory memory)
+                return error!;
+
+            memory.Clear(key);
+            return Success();
+        }
 
         private delegate IError VariableOperation(IContext context, VariableReference variable, IValue value);
 

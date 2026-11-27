@@ -1,6 +1,10 @@
 @using FormuLang.NET.Abstractions.Primitives
+@using FormuLang.NET.Abstractions.Processing
 
-@* Validation errors, or the error that stopped a stage. *@
+@*
+    Validation errors, or the error that stopped a stage; the warnings of the preparation (Core 1.2), which never
+    change the result; and the metadata block of the formula.
+*@
 @if (Diagnostics.ValidationErrors.Count > 0 || Error != null)
 {
     <div class="problems" role="alert">
@@ -13,6 +17,22 @@
             <p>@Error</p>
         }
     </div>
+}
+@if (Diagnostics.Warnings.Count > 0)
+{
+    <div class="warnings">
+        @foreach (IWarning warning in Diagnostics.Warnings)
+        {
+            <p><span class="warning-code">@warning.Code</span> <span class="muted">@warning.Line:@warning.Column</span> @warning.Message</p>
+        }
+    </div>
+}
+@if (Diagnostics.Metadata != null)
+{
+    <details class="panel">
+        <summary>Metadata of the formula</summary>
+        <pre class="metadata">@Diagnostics.Metadata</pre>
+    </details>
 }
 
 @code {

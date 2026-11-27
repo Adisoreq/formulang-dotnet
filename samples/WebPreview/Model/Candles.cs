@@ -74,6 +74,50 @@ namespace WebPreview.Model
 
         public static int RandomSeed() => System.Random.Shared.Next(1_000_000);
 
+        /// <summary>
+        /// Candles of a longer timeframe (<paramref name="length"/> milliseconds, from the time of the first candle), built
+        /// from the candles: only the candles that are closed at the end of the last candle, as a host application
+        /// provides them (Stock 1.2, "Other timeframes").
+        /// </summary>
+        public static IReadOnlyList<ChartCandle> Aggregate(IReadOnlyList<ChartCandle> candles, double length)
+        {
+            if (candles.Count == 0)
+                return [];
+
+            double first = candles[0].Time;
+            double end = candles[^1].Time + Day;
+            var result = new List<ChartCandle>();
+            ChartCandle? current = null;
+
+            foreach (ChartCandle candle in candles)
+            {
+                double time = first + Math.Floor((candle.Time - first) / length) * length;
+
+                if (current?.Time != time)
+                {
+                    if (current != null)
+                        result.Add(current);
+
+                    current = candle with { Time = time };
+                }
+                else
+                {
+                    current = current with
+                    {
+                        High = Math.Max(current.High, candle.High),
+                        Low = Math.Min(current.Low, candle.Low),
+                        Close = candle.Close,
+                        Volume = current.Volume + candle.Volume,
+                    };
+                }
+            }
+
+            if (current != null)
+                result.Add(current);
+
+            return result.Where(candle => candle.Time + length <= end).ToList();
+        }
+
         /// <summary>The date of a candle, <c>yyyy-MM-dd</c>.</summary>
         public static string DateOf(IReadOnlyList<ChartCandle> candles, int index)
             => DateTimeOffset.FromUnixTimeMilliseconds(index >= 0 && index < candles.Count ? (long)candles[index].Time : 0)

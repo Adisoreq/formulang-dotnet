@@ -8,6 +8,40 @@
 
 All notable changes of **FormuLang.NET**. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the library uses [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+**Supported standards:** `core-1.2`, `stock-1.2` ([`Adisoreq/FormuLang@1e7b2a6`](https://github.com/Adisoreq/FormuLang/tree/1e7b2a6); backward compatible with `core-1.0`, `core-1.1`, `stock-1.0` and `stock-1.1`), and the formula models of the standard. The choices that the standard leaves open are the same as in FormuLang-TS 1.2.0 ([Conformance](docs/conformance.md#implementation-choices), I25 - I32).
+
+### Added
+
+- Formula models ([FormuLang docs/implementation/formula_models.md](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/formula_models.md)), so host applications do not repeat the code of indicators, patterns and strategies:
+  - Core (`FormuLang.NET.Core.Model`): `ParameterSpec` (read from the `parameters` of the metadata), `Parameters.Normalize` (defaults, types, `min` / `max`, `options`, unknown keys; `ParameterProblem`, `ParameterProblemCode`), `Parameters.Key`, and `ValueConversion` between .NET values, `JsonElement`s and FormuLang values.
+  - Stock (`FormuLang.NET.Extensions.Stock.Models`): `Definition.FromFormula` / `TryFromFormula` with `IndicatorDefinition` (outputs), `PatternDefinition` and `StrategyDefinition` (labels of the checks), `InvalidDefinitionException` with its reason; `Definition.Normalize` and `CreateInstance` (FormuLang values, .NET values or a `JsonElement`; `ParameterException`), `Instance.ToJson` / `Definition.InstanceFromJson`; `Compute(environment, chart)` gives the `IndicatorSeries` (outputs by key), the `PatternSeries` or the `StrategySignals` (`StrategySignal` with `Reason`, `Checks` and `Extra`); `Live(...)` with `Start`, `Append` (resumed iterations) and `SaveState` / `RestoreState`; `FormulaRegistry.AddDefinition`.
+  - Identifiers of the registry may contain `-` (`FormulaIds.IsValid`), like the `id` of the metadata: `registry.Indicators.Add("macd-ema200", ...)`, `LOAD_INDICATOR("macd-ema200")`.
+- `core-1.2` memory of the Iteration and Time Contexts: the procedures `STORE(key, value)` and `CLEAR(key)` / `CLEAR()` and the function `RECALL(key, fallback?)`. The writes are applied after the iteration (`ContextMemory.Commit`), only on the selected path of `IF`, `AND` and `OR`, and only if the iteration did not result in an Error. `IContext.Memory`, `IMemory`, `ContextMemory` (`Entries`, `Load` for the host application), `Procedure.WritesMemoryOnly`.
+- `core-1.2` `HISTORY` constant of the Iteration Context (`IterationContext.History`).
+- `core-1.2` short circuit of `AND` / `OR` (and `&&` / `||`): the first `false` / `true` decides the result, and the arguments after it are discarded; `AND(...values)` and `OR(...values)` with more than two arguments (`ShortCircuitFunction`). `Function.Invoke` is virtual.
+- `core-1.2` metadata blocks `<@ { ... } @>`: `MetadataReader.Read`, `Executor.ReadMetadata`, `MetadataResult`, `IMetadataResult`; the metadata is a part of the prepared formula.
+- `core-1.2` warnings `UNUSED_VALUE`, `CONTINUED_LINE`, `METADATA_TYPE`, `METADATA_CONTEXT` (`IWarning`, `Warning`, `WarningCode`, `Warnings`), in `PreparedFormula.Warnings` and `ExecutionResult.Warnings`, with the line and column of the original formula; checks of extension keys with `Environment.RegisterMetadataChecker` (`MetadataChecker`, `MetadataChecks`). A line that starts with a binary operator is a `SYNTAX_ERROR` with the message of the standard.
+- `core-1.2` execution modes: `Executor.Prepare` returns a `PreparedFormula` (an `IPreparedFormula`), `Executor.Evaluate(prepared, context)` is a hot execution; `ExecuteIterations`, `ResumeIterations` and `CreateFrameRunner` accept a prepared formula.
+- `core-1.2` resumed iterations: `IterationContext.Extend(count)`, `CompletedIterations`, `LastResult`, `SaveState` / `RestoreState` (`IterationState`), `Executor.ResumeIterations`; `StockContext.AppendCandles`, `IndicatorContext.AppendCandles(candles, source)`.
+- `Context.ContextTypeNames` and `Context.FinalizeResult`; `IToken.Line` / `Column`; `Cleaner.CleanUpWithPositions` (`CleanUpPositions`, `SourcePosition`); `Validator.ValidateEnvironment`; `Environment.FunctionCount`.
+- `stock-1.2` constants `TIMEFRAME` and `INSTRUMENT`, and `PARAMETERS` in the Strategy Context (`StrategyContext.Create(environment, candles, options, parameters)`, `CompleteParameters`, `ParameterDefaults`).
+- `stock-1.2` signal objects `{ signal, reason?, checks?, ... }` of strategies (`StrategyResult.SignalObjects`, `StrategyContext.SignalObjectProblem`).
+- `stock-1.2` other timeframes: `StockContextOptions` (`Timeframe`, `Instrument`, `TimeframeLength`, `Timeframes`, `TimeframeProvider`), `TimeframeCandles`, `LOAD_CANDLES`, the options overloads of `LOAD_INDICATOR` (`source`, `timeframe`, `output`, `align`) and `LOAD_PATTERN` (`timeframe`, `align`).
+- `stock-1.2` series functions `READY`, `CROSSOVER`, `CROSSUNDER`, `HIGHEST`, `LOWEST`, `RISING`, `FALLING`, `BARS_SINCE`, `VALUE_WHEN`, and the strategy function `SCORE` (`SeriesFunctions`).
+- `stock-1.2` metadata: the check of the `stock` key (`StockStandard.MetadataChecker`), `FormulaDefinition.FromFormula` and `FormulaRegistry.AddFormula` (definitions read from the metadata).
+- `StockExecutor` accepts prepared formulas; `StockExecutor.IndicatorResultsError`, `PatternResultError`, `StrategyResultError`.
+- WebPreview: Core 1.2 and Stock 1.2 examples (metadata and warnings, short circuit, memory, `HISTORY`, distance, series functions, weekly candles, Wilder's RSI with the memory, `CROSSOVER`, `SCORE` with a signal object, the weekly trend), the warnings and the metadata of every formula, `TIMEFRAME` = `"1d"`, `INSTRUMENT` = `"MOCK"` and the weekly candles `"1w"`, and the last signal object of the selected strategy.
+
+### Changed
+
+- The version of the standards is `core-1.2` and `stock-1.2`; `STANDARDS` is `["core-1.0", "core-1.1", "core-1.2"]` (and `"stock-1.0"`, `"stock-1.1"`, `"stock-1.2"`). `RegisterStock` requires `core-1.2+` and registers the check of the `stock` metadata key.
+- The execution steps have the metadata reading as step 2. The clean-up of the `Executor` keeps the positions of the characters, so the tokens have the lines and columns of the original formula.
+- `StockExecutor.ExecuteStrategy` accepts signal objects; the error of another result says "neither a Number nor a signal object".
+- The key of a stored series of `LOAD_INDICATOR` and `LOAD_PATTERN` starts with the timeframe.
+- The identifier of a registry definition follows the rule of the `id` of the metadata (`FormulaIds.IsValid`) instead of the rule of an identifier token.
+
 ## [1.1.0] - 2026-11-25
 
 Supported standards: `core-1.1`, `stock-1.1` (backward compatible with `core-1.0` and `stock-1.0`). Faster execution of formulas run for every candle or element (Iteration Context); the results of `1.0` formulas are the same.

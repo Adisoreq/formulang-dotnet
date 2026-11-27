@@ -17,7 +17,10 @@ namespace WebPreview.Tests
         {
             IndicatorDraft draft = Sma();
             draft.IndicatorId = "1SMA";
-            Assert.Contains(draft.Problems([draft]), p => p.Contains("not a valid identifier"));
+            Assert.Contains(draft.Problems([draft]), p => p.Contains("is not valid"));
+
+            draft.IndicatorId = "sma-fast";
+            Assert.Empty(draft.Problems([draft]));
         }
 
         [Fact]
@@ -78,7 +81,7 @@ namespace WebPreview.Tests
             Assert.Contains(drafts[1].Problems(drafts), p => p.Contains("is used by another pattern"));
 
             drafts[1].PatternId = "with space";
-            Assert.Contains(drafts[1].Problems(drafts), p => p.Contains("is not a valid identifier"));
+            Assert.Contains(drafts[1].Problems(drafts), p => p.Contains("is not valid"));
         }
 
         [Fact]

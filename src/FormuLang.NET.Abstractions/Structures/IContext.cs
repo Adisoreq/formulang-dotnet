@@ -18,5 +18,11 @@ namespace FormuLang.NET.Abstractions.Structures
         public IObject EnvironmentVariables { get; }
 
         public ContextType ContextType { get; }
+
+        /// <summary>
+        /// Memory of the context (docs/core/context.md, "Memory", since <c>core-1.2</c>), or <c>null</c> for a context
+        /// type without one (the Default Context).
+        /// </summary>
+        public IMemory? Memory => null;
     }
 }

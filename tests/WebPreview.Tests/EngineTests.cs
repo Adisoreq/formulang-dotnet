@@ -241,5 +241,92 @@ namespace WebPreview.Tests
             Assert.Equal([0.5, -0.5, 0], proposal.Final);
             Assert.Equal([0.5, 0, 0], proposal.Values["a"].Weighted.Select(v => v ?? double.NaN));
         }
+
+        // Core 1.2 and Stock 1.2
+
+        [Fact]
+        public void DiagnoseGivesTheWarningsAndTheMetadata()
+        {
+            Example example = Examples.ByContext[ContextKind.Default].First(e => e.Id == "metadata");
+            Diagnostics diagnostics = Engine.Diagnose(example.Formula.ReplaceLineEndings("\n"), Engine.CreateEnvironment());
+
+            Assert.Equal(["UNUSED_VALUE", "UNUSED_VALUE", "CONTINUED_LINE"], diagnostics.Warnings.Select(w => w.Code));
+            Assert.StartsWith("{ id: \"metadata-demo\"", diagnostics.Metadata);
+        }
+
+        [Fact]
+        public void DiagnoseComparesTheContextOfTheMetadataWithTheContextType()
+        {
+            const string formula = "<@ { context: \"Stock.Strategy\" } @>\nNEUTRAL";
+
+            Assert.Empty(Engine.Diagnose(formula, Engine.CreateEnvironment(), ContextKind.Strategy).Warnings);
+            Assert.Equal(["METADATA_CONTEXT"], Engine.Diagnose(formula, Engine.CreateEnvironment(), ContextKind.Indicator).Warnings.Select(w => w.Code));
+        }
+
+        [Fact]
+        public void EveryIterationExampleRuns()
+        {
+            foreach (Example example in Examples.ByContext[ContextKind.Iteration].Where(e => e.Id != Examples.NewFormula))
+            {
+                IterationRun run = Engine.RunIterations(example.Formula.ReplaceLineEndings("\n"), 12, Engine.CreateEnvironment());
+                Assert.True(run.Results.All(r => r.Successful), $"{example.Id}: {run.Results.FirstOrDefault(r => !r.Successful)}");
+            }
+        }
+
+        [Fact]
+        public void MemoryExampleStartsTheCountAgainEveryFifthIteration()
+        {
+            Example example = Examples.ByContext[ContextKind.Iteration].First(e => e.Id == "memory");
+            IterationRun run = Engine.RunIterations(example.Formula.ReplaceLineEndings("\n"), 7, Engine.CreateEnvironment());
+
+            Assert.Equal("I = 5: sum = 5, stored before = 0", run.Results[5].ToString());
+        }
+
+        [Fact]
+        public void StockContextHasTheTimeframeTheInstrumentAndTheWeeklyCandles()
+        {
+            IterationRun run = Engine.RunStock("[TIMEFRAME, INSTRUMENT, LEN(LOAD_CANDLES(\"1w\", { align: false }))]", Chart, Engine.CreateEnvironment());
+
+            Assert.Equal("[\"1d\", \"MOCK\", 0]", run.Results[0].ToString());
+            Assert.Equal($"[\"1d\", \"MOCK\", {Candles.Aggregate(Chart, 7 * 86_400_000.0).Count}]", run.Results[^1].ToString());
+        }
+
+        [Fact]
+        public void EveryStrategyExampleRuns()
+        {
+            var indicators = Examples.Indicators.Select(i => new IndicatorSetup(IndicatorDraft.Of(i), i.Formula)).ToList();
+            var patterns = Examples.Patterns.Select(p => new PatternSetup(PatternDraft.Of(p), p.Formula)).ToList();
+            var environment = Engine.CreateEnvironment(indicators, patterns);
+
+            var setups = Examples.Strategies.Where(s => s.Id != Examples.NewFormula).Select(s => new StrategySetup(s.Id, s.Formula.ReplaceLineEndings("\n"))).ToList();
+            StrategyRun run = Engine.RunStrategies(setups, Chart, environment);
+
+            Assert.All(run.Strategies, s => Assert.True(s.Error == null, $"{s.Id}: {s.Error}"));
+        }
+
+        [Fact]
+        public void ScoreStrategyGivesSignalObjectsWithTheirChecks()
+        {
+            var indicators = Examples.Indicators.Select(i => new IndicatorSetup(IndicatorDraft.Of(i), i.Formula)).ToList();
+            StrategyConfig score = Examples.Strategies.First(s => s.Id == "score");
+
+            StrategySignals signals = Assert.Single(Engine.RunStrategies([new StrategySetup(score.Id, score.Formula.ReplaceLineEndings("\n"))],
+                Chart, Engine.CreateEnvironment(indicators)).Strategies);
+
+            Assert.Null(signals.Error);
+            Assert.All(signals.Details, d => Assert.Equal(["trend", "rsi", "bullish"], d!.Checks.Select(c => c.Key)));
+            Assert.All(signals.Signals.Zip(signals.Details).Where(p => p.First > 0), p => Assert.NotNull(p.Second!.Reason));
+        }
+
+        [Fact]
+        public void RsiExampleKeepsItsAveragesInTheMemory()
+        {
+            IndicatorRun run = Engine.RunIndicator(SetupOf("rsi"), Chart, Engine.CreateEnvironment());
+
+            Assert.Null(run.Error);
+            IReadOnlyList<double?> rsi = run.Series["rsi"];
+            Assert.All(rsi.Take(14), v => Assert.Null(v));
+            Assert.All(rsi.Skip(14), v => Assert.InRange(v!.Value, 0, 100));
+        }
     }
 }

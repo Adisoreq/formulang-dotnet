@@ -11,7 +11,7 @@ FormuLang.NET.Abstractions  ◄──  FormuLang.NET.Core  ◄──  FormuLang.
 | :------ | :--------- | :------------- |
 | `FormuLang.NET.Abstractions` | - | Contracts shared by every module. A host application or an extension can depend only on this project. |
 | `FormuLang.NET.Core` | Abstractions | Implementation of the [Core standard](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md) and of the execution pipeline. |
-| `FormuLang.NET.Extensions.Stock` | Abstractions, Core | Implementation of the Stock extension standard: `Stock.Candle`, the Stock context types, the formula registry, `LOAD_INDICATOR` and `LOAD_PATTERN`. |
+| `FormuLang.NET.Extensions.Stock` | Abstractions, Core | Implementation of the Stock extension standard: `Stock.Candle`, the Stock context types, the formula registry, the Stock functions (`LOAD_INDICATOR`, `LOAD_PATTERN`, `LOAD_CANDLES`, the series functions, `SCORE`, ...) and the formula models (`Models`). |
 | `FormuLang.NET.Core.Tests`, `FormuLang.NET.Extensions.Stock.Tests` | Core, Extensions.Stock | Tests built from the examples of the standard documents (xUnit). |
 | `FormuLang.NET.Conformance.Tests` | Core, Extensions.Stock | Runner of the language-independent conformance tests of the standard (JSON test cases copied from the standard repository). |
 | `CalculatorCLI` (sample) | Core, Extensions.Stock | Executes formulas from the command line. |
@@ -26,13 +26,14 @@ Every extension standard gets its own `FormuLang.NET.Extensions.<Name>` project,
 | `.Primitives` | `IPrimitive`, `IValue`, `IType`, `IContainer`, `IObject`, `IError`, `PrimitiveType`, `ContainerType`, `FunctionType` | `Primitive`, `Value`, `Types` (type factory), `Container`, `Variable`, `Constant`, `Object`, `Error`, `VariableReference` |
 | `.Functions` | `IFunction`, `ILambda`, `IFunctionOverload`, `IArgumentTemplate`, `IInvokable` | `Function`, `Procedure`, `FunctionOverload`, `ArgumentTemplate` |
 | `.Operators` | `IOperator`, `OperatorType`, `Associativity` | `Operators` (operator table, in the root namespace) |
-| `.Processing` | Stage interfaces (`IValidator`, `ICleaner`, `ITokenizer`, `IParser`, `IEvaluator`), their results, `IToken`, `IExpressionNode`, `ISequence`, `IExecutionResult` | `Executor`, `Validator`, `Cleaner`, `Tokenizer`, `Parser`, `Evaluator`, `Lambda`, expression nodes |
-| `.Structures` | `IEnvironment`, `IContext`, `ContextType`, `IStandard`, `IStandardVersion`, `IAbstractTree<T>` | `Environment`, `Context`, `IterationContext`, `TimeContext`, `Standard`, `StandardVersion`, `AbstractTree<T>` |
+| `.Processing` | Stage interfaces (`IValidator`, `ICleaner`, `ITokenizer`, `IParser`, `IEvaluator`), their results, `IToken`, `IExpressionNode`, `ISequence`, `IExecutionResult`, `IMetadataResult`, `IPreparedFormula`, `IWarning`, `WarningCode` | `Executor`, `PreparedFormula`, `Validator`, `MetadataReader`, `Cleaner`, `Tokenizer`, `Parser`, `Evaluator`, `Lambda`, expression nodes, `Warning`, `Warnings`, `MetadataChecks` |
+| `.Structures` | `IEnvironment`, `IContext`, `IMemory`, `ContextType`, `IStandard`, `IStandardVersion`, `IAbstractTree<T>` | `Environment`, `Context`, `IterationContext`, `IterationState`, `TimeContext`, `ContextMemory`, `Standard`, `StandardVersion`, `AbstractTree<T>` |
+| `.Model` | - | Formula models of the Core: `ParameterSpec`, `Parameters` (normalization and key), `ParameterProblem`, `ValueConversion` (.NET and JSON values) |
 | `.Standards` | - | `CoreStandard`, `CoreFunctions`, `CoreProcedures` |
 | `.Validation` | - | `IdentifierValidator`, `NumberValidator` |
 | (root) | - | `Errors` (Core error factory), `Operators` |
 
-The standard calls the whole process **execution**; **evaluation** is only its fifth stage. The stages live in the `Processing` namespace, and `Executor` runs them in order.
+The standard calls the whole process **execution**; **evaluation** is only its sixth stage. The stages live in the `Processing` namespace, and `Executor` runs them in order.
 
 ## Execution pipeline
 
@@ -40,13 +41,24 @@ The standard calls the whole process **execution**; **evaluation** is only its f
 | :-: | :---- | :-------- | :------------------ | :----- |
 | | [Pre-execution](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/pre-execution.md) | - | `Context.Create`, `Context.PreExecute` | context with copies of the environment variables |
 | 1 | [Validation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/validation.md) | `IValidator` | `Validator` | every error found, at once |
-| 2 | [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | `ICleaner` | `Cleaner` | cleaned text |
-| 3 | [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | `ITokenizer` | `Tokenizer` | tokens |
-| 4 | [Parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/parsing.md) | `IParser` | `Parser` | one tree and parsing queue per sequence, primitive map |
-| 5 | [Evaluation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md) | `IEvaluator` | `Evaluator` | value of the last sequence, or the aborting Error |
-| 6 | [Finalization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/finalization.md) | - | `Executor` | `ExecutionResult` |
+| 2 | [Metadata reading](https://github.com/Adisoreq/FormuLang/blob/main/docs/core/metadata.md#metadata-reading) | - | `MetadataReader` | metadata Object, formula with the block replaced by white space |
+| 3 | [Clean-up](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/cleanup.md) | `ICleaner` | `Cleaner` | cleaned text |
+| 4 | [Tokenization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/tokenization.md) | `ITokenizer` | `Tokenizer` | tokens |
+| 5 | [Parsing](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/parsing.md) | `IParser` | `Parser` | one tree and parsing queue per sequence, primitive map |
+| 6 | [Evaluation](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/evaluation.md) | `IEvaluator` | `Evaluator` | value of the last sequence, or the aborting Error |
+| 7 | [Finalization](https://github.com/Adisoreq/FormuLang/blob/main/docs/semantics/finalization.md) | - | `Executor`, `Context.FinalizeResult` | `ExecutionResult` |
 
 The pipeline stops at the first stage that fails. Validation is the only stage that reports every problem it finds.
+
+Stages 1 - 5 are the **preparation** (`Executor.Prepare`): it gives a `PreparedFormula` with the parsed sequences, the metadata and the warnings (`Warnings`). A **hot execution** (`Executor.Evaluate`, every iteration of `ExecuteIterations`) evaluates a prepared formula again. The clean-up keeps the original position of every character (`Cleaner.CleanUpWithPositions`), so the tokens, the warnings and the parsing error of a line that starts with a binary operator have the lines and columns of the original formula.
+
+### Memory
+
+`ContextMemory` collects the writes of `STORE` and `CLEAR`. The evaluator records the range of the writes made by every call node of a sequence (also through the lambdas it invokes); when the sequence is complete, the writes of the nodes that are not on the selected path (a branch of `IF` that is not selected, an argument of `AND` / `OR` after the deciding one) are discarded. The executor applies the remaining writes after the finalization, or drops them if the result is an Error.
+
+### Formula models
+
+`FormuLang.NET.Core.Model` (parameter specifications and their normalization, conversion of .NET values) and `FormuLang.NET.Extensions.Stock.Models` (definitions, instances, runs and live runs) implement the [formula models](https://github.com/Adisoreq/FormuLang/blob/main/docs/implementation/formula_models.md) of the standard, so host applications do not repeat the code of indicators, patterns and strategies. A definition is read from the metadata only and does not depend on an environment; a run creates the Stock context of its kind and uses the executor, the resumed iterations and the checks of `StockExecutor`, so a run gives the same results as `LOAD_INDICATOR` or `StockExecutor`. Display settings, the order model and storage stay in the host application.
 
 ### Parsing
 

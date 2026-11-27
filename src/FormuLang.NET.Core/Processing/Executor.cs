@@ -1,4 +1,5 @@
-﻿using FormuLang.NET.Abstractions.Primitives;
+﻿using System.Runtime.CompilerServices;
+using FormuLang.NET.Abstractions.Primitives;
 using FormuLang.NET.Abstractions.Processing;
 using FormuLang.NET.Abstractions.Structures;
 using FormuLang.NET.Core.Primitives;
@@ -8,10 +9,15 @@ using FormuLang.NET.Core.Utils;
 namespace FormuLang.NET.Core.Processing
 {
     /// <summary>
-    /// Runs the whole execution (docs/semantics/execution.md):
-    /// validation → clean-up → tokenization → parsing → evaluation → finalization.
-    /// Every stage can be replaced with its own implementation.
+    /// Runs the whole execution (docs/semantics/execution.md): pre-execution, validation, metadata reading, clean-up,
+    /// tokenization, parsing, evaluation and finalization. The pipeline stops at the first stage that fails.
     /// </summary>
+    /// <remarks>
+    /// The steps up to the parsing are the <b>preparation</b> (<see cref="Prepare"/>), which gives a prepared formula; a
+    /// <b>hot execution</b> evaluates a prepared formula again without preparing it (<see cref="Evaluate"/>, and every
+    /// iteration of <see cref="ExecuteIterations(string, IterationContext, bool)"/>). It gives the same result as a cold
+    /// execution. Every stage can be replaced with its own implementation.
+    /// </remarks>
     public class Executor
     {
         private IValidator? _validator = new Validator();
@@ -19,6 +25,12 @@ namespace FormuLang.NET.Core.Processing
         private ITokenizer _tokenizer = new Tokenizer();
         private IParser? _parser;
         private IEvaluator _evaluator = new Evaluator();
+
+        // Parser of an environment, kept while the environment has the same functions
+        private readonly ConditionalWeakTable<IEnvironment, Tuple<int, IParser>> _parsers = new();
+
+        // Contexts whose environment was checked before their first hot execution
+        private readonly ConditionalWeakTable<IContext, object> _checkedContexts = new();
 
         /// <summary>
         /// Executor with the Core implementation of every stage.
@@ -66,8 +78,8 @@ namespace FormuLang.NET.Core.Processing
             => Execute(formula, Context.Create(environment));
 
         /// <summary>
-        /// Executes the formula in the context chosen by the host application. Reuse the context to keep its variables
-        /// between executions.
+        /// Executes the formula in the context chosen by the host application (a cold execution). Reuse the context to
+        /// keep its variables between executions. The result has the warnings of the preparation.
         /// </summary>
         public ExecutionResult Execute(string formula, IContext context)
         {
@@ -75,15 +87,27 @@ namespace FormuLang.NET.Core.Processing
             if (context is Context core)
                 core.PreExecute();
 
-            if (Prepare(formula, context, out IParsingResult? parsing) is ExecutionResult failure)
-                return failure;
+            PreparedFormula prepared = Prepare(formula, context);
+            return prepared.Failure ?? EvaluatePrepared(prepared.Parsing, context, prepared.Warnings);
+        }
 
-            return Evaluate(parsing!, context);
+        /// <summary>
+        /// Evaluates a prepared formula in a context (a hot execution): the evaluation and the finalization, after the
+        /// pre-execution of the context. The checks of the environment are done once for every context; a formula that
+        /// was prepared for another environment, or before the functions of the environment changed, is prepared again.
+        /// </summary>
+        public ExecutionResult Evaluate(IPreparedFormula formula, IContext context)
+        {
+            if (context is Context core)
+                core.PreExecute();
+
+            return PreparedFor(formula, context, out IParsingResult? parsing) ?? EvaluatePrepared(parsing!, context, []);
         }
 
         /// <summary>
         /// Executes the formula once for every iteration of an Iteration Context (docs/core/context.md, "Iteration
-        /// Context"), from the first to the last. The formula is validated, tokenized and parsed only once.
+        /// Context"), from the first to the last. The formula is prepared (validated, cleaned up, tokenized and parsed)
+        /// only once. The first iteration starts with an empty <c>HISTORY</c> and an empty memory.
         /// </summary>
         /// <param name="stopOnError">
         /// The host application decides whether the remaining iterations are executed after an iteration results in an
@@ -91,28 +115,69 @@ namespace FormuLang.NET.Core.Processing
         /// <c>null</c> after a failed iteration).
         /// </param>
         public IterationExecutionResult ExecuteIterations(string formula, IterationContext context, bool stopOnError = true)
-        {
-            var results = new List<ExecutionResult>(context.Count);
+            => ExecuteIterations(new FormulaSource(formula), context, stopOnError);
 
+        /// <inheritdoc cref="ExecuteIterations(string, IterationContext, bool)"/>
+        public IterationExecutionResult ExecuteIterations(IPreparedFormula formula, IterationContext context, bool stopOnError = true)
+            => ExecuteIterations(new FormulaSource(formula), context, stopOnError);
+
+        private IterationExecutionResult ExecuteIterations(FormulaSource formula, IterationContext context, bool stopOnError)
+        {
             if (context.Count == 0)
-                return new IterationExecutionResult(results);
+                return new IterationExecutionResult([]);
 
             context.BeginIteration(0, null);
 
-            if (Prepare(formula, context, out IParsingResult? parsing) is ExecutionResult failure)
-            {
-                results.Add(failure);
-                return new IterationExecutionResult(results);
-            }
+            if (PreparedFor(formula, context, out IParsingResult? parsing) is ExecutionResult failure)
+                return new IterationExecutionResult([failure]);
 
-            IValue? previous = null;
+            return Iterate(parsing!, context, 0, stopOnError);
+        }
 
-            for (int i = 0; i < context.Count; i++)
+        /// <summary>
+        /// Continues the iterations of a context after the last iteration executed by
+        /// <see cref="ExecuteIterations(string, IterationContext, bool)"/> or by this method (docs/core/context.md,
+        /// "Resumed iterations"), e.g. after the host application added elements to the collection
+        /// (<see cref="IterationContext.Extend"/>). <c>PREV</c>, <c>HISTORY</c> and the memory of the executed iterations
+        /// are kept, so the results are the same as when all the iterations are executed again. Without executed
+        /// iterations it is <see cref="ExecuteIterations(string, IterationContext, bool)"/>.
+        /// </summary>
+        /// <returns>The results of the resumed iterations only.</returns>
+        public IterationExecutionResult ResumeIterations(string formula, IterationContext context, bool stopOnError = true)
+            => ResumeIterations(new FormulaSource(formula), context, stopOnError);
+
+        /// <inheritdoc cref="ResumeIterations(string, IterationContext, bool)"/>
+        public IterationExecutionResult ResumeIterations(IPreparedFormula formula, IterationContext context, bool stopOnError = true)
+            => ResumeIterations(new FormulaSource(formula), context, stopOnError);
+
+        private IterationExecutionResult ResumeIterations(FormulaSource formula, IterationContext context, bool stopOnError)
+        {
+            int start = context.CompletedIterations;
+
+            if (start == 0)
+                return ExecuteIterations(formula, context, stopOnError);
+
+            if (start >= context.Count)
+                return new IterationExecutionResult([]);
+
+            if (PreparedFor(formula, context, out IParsingResult? parsing) is ExecutionResult failure)
+                return new IterationExecutionResult([failure]);
+
+            return Iterate(parsing!, context, start, stopOnError);
+        }
+
+        private IterationExecutionResult Iterate(IParsingResult parsing, IterationContext context, int start, bool stopOnError)
+        {
+            var results = new List<ExecutionResult>(context.Count - start);
+            IValue? previous = start == 0 ? null : context.LastResult;
+
+            for (int i = start; i < context.Count; i++)
             {
                 if (i > 0)
                     context.BeginIteration(i, previous);
 
-                ExecutionResult result = Evaluate(parsing!, context);
+                ExecutionResult result = EvaluatePrepared(parsing, context, []);
+                context.CompleteIteration(result.Value);
                 results.Add(result);
 
                 if (!result.Successful && stopOnError)
@@ -130,9 +195,16 @@ namespace FormuLang.NET.Core.Processing
         /// one frame.
         /// </summary>
         public FrameRunner CreateFrameRunner(string formula, TimeContext context)
+            => CreateFrameRunner(new FormulaSource(formula), context);
+
+        /// <inheritdoc cref="CreateFrameRunner(string, TimeContext)"/>
+        public FrameRunner CreateFrameRunner(IPreparedFormula formula, TimeContext context)
+            => CreateFrameRunner(new FormulaSource(formula), context);
+
+        private FrameRunner CreateFrameRunner(FormulaSource formula, TimeContext context)
         {
             context.BeginFrame(0, 0, 0, null);
-            ExecutionResult? failure = Prepare(formula, context, out IParsingResult? parsing);
+            ExecutionResult? failure = PreparedFor(formula, context, out IParsingResult? parsing);
             return new FrameRunner(this, context, parsing, failure);
         }
 
@@ -161,60 +233,263 @@ namespace FormuLang.NET.Core.Processing
             return new IterationExecutionResult(results);
         }
 
-        internal ExecutionResult EvaluateFrame(IParsingResult parsing, IContext context) => Evaluate(parsing, context);
+        internal ExecutionResult EvaluateFrame(IParsingResult parsing, IContext context) => EvaluatePrepared(parsing, context, []);
 
         /// <summary>
-        /// Stages 1-4: validation, clean-up, tokenization and parsing.
+        /// The preparation (docs/semantics/execution.md, "Execution modes"): validation, metadata reading, clean-up,
+        /// tokenization and parsing. Returns the prepared formula, with its metadata and warnings, or a failed one
+        /// (<see cref="PreparedFormula.Failure"/>) with the result of the stage that stopped. A prepared formula can be
+        /// evaluated many times with <see cref="Evaluate"/>.
         /// </summary>
-        /// <returns>The failed result, or <c>null</c> if <paramref name="parsing"/> is ready to be evaluated.</returns>
-        private ExecutionResult? Prepare(string formula, IContext context, out IParsingResult? parsing)
+        public PreparedFormula Prepare(string formula, IContext context)
         {
-            parsing = null;
+            IEnvironment environment = context.Environment;
 
             // 1. Validation
             if (_validator != null)
             {
-                IValidationResult validation = _validator.Validate(formula, context.Environment);
+                IValidationResult validation = _validator.Validate(formula, environment);
                 if (validation.Errors.Count > 0)
-                    return Finalize(Value.Error(validation.Errors[0], formula), context, validation.Errors);
+                    return PreparedFormula.Failed(formula, new ExecutionResult(Value.Error(validation.Errors[0], formula), validation.Errors, context));
             }
 
-            // 2. Clean-up
-            ICleanUpResult cleanUp = _cleaner.CleanUp(formula);
+            _checkedContexts.AddOrUpdate(context, true);
+
+            // 2. Metadata reading
+            MetadataResult metadata = MetadataReader.Read(formula);
+            if (metadata.Error.IsFailed())
+                return Fail(metadata.Error, formula, context);
+
+            // 3. Clean-up
+            ICleanUpResult cleanUp;
+            CleanUpPositions? positions = null;
+
+            if (_cleaner is Cleaner)
+                (cleanUp, positions) = Cleaner.CleanUpWithPositions(metadata.Formula);
+            else
+                cleanUp = _cleaner.CleanUp(metadata.Formula);
+
             if (cleanUp.Error.IsFailed())
                 return Fail(cleanUp.Error, formula, context);
 
-            // 3. Tokenization
+            // 4. Tokenization
             ITokenizationResult tokenization = _tokenizer.Tokenize(cleanUp.Result);
             if (tokenization.Error.IsFailed())
                 return Fail(tokenization.Error, formula, context);
 
-            // 4. Parsing
-            IParser parser = _parser ?? Parser.ForEnvironment(context.Environment);
-            parsing = parser.Parse(tokenization.Tokens);
+            IEnumerable<IToken> tokens = positions == null ? tokenization.Tokens : OriginalPositions(tokenization.Tokens, positions);
+
+            // 5. Parsing
+            IParsingResult parsing = ParserFor(environment).Parse(tokens);
             if (parsing.Error.IsFailed())
                 return Fail(parsing.Error, formula, context);
+
+            // Warnings
+            List<IWarning> warnings = Warnings.SequenceWarnings(parsing, environment);
+            if (metadata.Position is SourcePosition position)
+                warnings.AddRange(Warnings.MetadataWarnings(metadata.Metadata, position, context));
+
+            return new PreparedFormula(formula, parsing, metadata.Metadata, Warnings.Sort(warnings), environment, FunctionCount(environment));
+        }
+
+        /// <summary>
+        /// The validation and the metadata reading only (docs/core/metadata.md, "Metadata reading"), e.g. to show the
+        /// parameters of a formula in an editor. Without an environment only the metadata reading is done.
+        /// </summary>
+        public MetadataResult ReadMetadata(string formula, IEnvironment? environment = null)
+        {
+            if (_validator != null && environment != null)
+            {
+                IValidationResult validation = _validator.Validate(formula, environment);
+                if (validation.Errors.Count > 0)
+                    return new MetadataResult(Value.Object(new Primitives.Object(), "{}"), formula, null, validation.Errors[0]);
+            }
+
+            return MetadataReader.Read(formula);
+        }
+
+        /// <summary>
+        /// A formula text, or a formula prepared by <see cref="Prepare"/>.
+        /// </summary>
+        private readonly record struct FormulaSource(string? Text, IPreparedFormula? Prepared)
+        {
+            public FormulaSource(string text) : this(text, null) { }
+            public FormulaSource(IPreparedFormula prepared) : this(null, prepared) { }
+        }
+
+        private ExecutionResult? PreparedFor(FormulaSource formula, IContext context, out IParsingResult? parsing)
+            => formula.Text != null ? PreparedFor(Prepare(formula.Text, context), context, out parsing) : PreparedFor(formula.Prepared!, context, out parsing);
+
+        /// <summary>
+        /// The parsing result for the context: of the given prepared formula (after the checks of the environment, once
+        /// for every context), or of a new preparation if it was prepared for another environment.
+        /// </summary>
+        /// <returns>The failed result, or <c>null</c> if <paramref name="parsing"/> is ready to be evaluated.</returns>
+        private ExecutionResult? PreparedFor(IPreparedFormula formula, IContext context, out IParsingResult? parsing)
+        {
+            parsing = null;
+
+            if (formula is PreparedFormula prepared)
+            {
+                if (prepared.Failure != null)
+                    return prepared.Failure;
+
+                if (!prepared.IsPreparedFor(context.Environment))
+                    return PreparedFor(Prepare(formula.Formula, context), context, out parsing);
+
+                parsing = prepared.Parsing;
+            }
+            else
+            {
+                if (formula.Error.IsFailed())
+                    return Fail(formula.Error, formula.Formula, context).Failure;
+
+                parsing = formula;
+            }
+
+            if (!_checkedContexts.TryGetValue(context, out _))
+            {
+                if (_validator is Validator)
+                {
+                    ValidationResult validation = Validator.ValidateEnvironment(context.Environment);
+                    if (validation.Errors.Count > 0)
+                    {
+                        parsing = null;
+                        return new ExecutionResult(Value.Error(validation.Errors[0], formula.Formula), validation.Errors, context);
+                    }
+                }
+                else if (_validator != null)
+                {
+                    return PreparedFor(Prepare(formula.Formula, context), context, out parsing);
+                }
+
+                _checkedContexts.AddOrUpdate(context, true);
+            }
 
             return null;
         }
 
-        /// <summary>
-        /// Stages 5-6: evaluation and finalization.
-        /// </summary>
-        private ExecutionResult Evaluate(IParsingResult parsing, IContext context)
+        private IParser ParserFor(IEnvironment environment)
         {
-            IEvaluationResult evaluation = _evaluator.Evaluate(parsing, context);
-            return Finalize(evaluation.Value, context, []);
+            if (_parser != null)
+                return _parser;
+
+            int count = FunctionCount(environment);
+
+            if (_parsers.TryGetValue(environment, out var cached) && cached.Item1 == count)
+                return cached.Item2;
+
+            Parser parser = Parser.ForEnvironment(environment);
+            _parsers.AddOrUpdate(environment, Tuple.Create(count, (IParser)parser));
+            return parser;
         }
 
-        private static ExecutionResult Fail(IError error, string formula, IContext context)
-            => Finalize(Value.Error(error, formula), context, []);
+        internal static int FunctionCount(IEnvironment environment)
+            => environment is Structures.Environment core ? core.FunctionCount : environment.Functions.Count();
 
         /// <summary>
-        /// Finalization: wraps the computed value into the result returned to the host application.
+        /// Stages 6-7: evaluation and finalization; the writes to the memory are applied if the result is not an Error.
         /// </summary>
-        private static ExecutionResult Finalize(IValue value, IContext context, IReadOnlyList<IError> validationErrors)
-            => new(value, validationErrors, context);
+        private ExecutionResult EvaluatePrepared(IParsingResult parsing, IContext context, IReadOnlyList<IWarning> warnings)
+        {
+            IValue value = _evaluator.Evaluate(parsing, context).Value;
+
+            if (context is Context core)
+                value = core.FinalizeResult(value);
+
+            if (context.Memory is ContextMemory memory)
+            {
+                if (value.Type.Base == Types.ErrorName && value.Raw is IError error && error.IsFailed())
+                    memory.Rollback();
+                else
+                    memory.Commit();
+            }
+
+            return new ExecutionResult(value, [], context, warnings);
+        }
+
+        private static PreparedFormula Fail(IError error, string formula, IContext context)
+            => PreparedFormula.Failed(formula, new ExecutionResult(Value.Error(error, formula), [], context));
+
+        /// <summary>
+        /// The tokens with the positions of their first characters in the original formula.
+        /// </summary>
+        private static IEnumerable<IToken> OriginalPositions(IEnumerable<IToken> tokens, CleanUpPositions positions)
+            => tokens.Select(token =>
+            {
+                if (token.Line is not int line || token.Column is not int column || positions.At(line, column) is not SourcePosition position)
+                    return token;
+
+                return new Token(token.Type, token.Value, position.Line, position.Column);
+            }).ToArray();
+    }
+
+    /// <summary>
+    /// A prepared formula (docs/semantics/execution.md, "Execution modes", since <c>core-1.2</c>): the parsed sequences,
+    /// the metadata and the warnings of the preparation. A hot execution evaluates it without preparing the formula again
+    /// (<see cref="Executor.Evaluate"/>, <see cref="Executor.ExecuteIterations(IPreparedFormula, IterationContext, bool)"/>),
+    /// as long as the functions of the environment do not change.
+    /// </summary>
+    public sealed class PreparedFormula : IPreparedFormula
+    {
+        private readonly IEnvironment? _environment;
+        private readonly int _functionCount;
+
+        public string Formula { get; }
+
+        /// <summary>
+        /// The result of the parsing; a failed parsing result if the preparation failed.
+        /// </summary>
+        public IParsingResult Parsing { get; }
+
+        public IValue Metadata { get; }
+
+        public IReadOnlyList<IWarning> Warnings { get; }
+
+        /// <summary>
+        /// The failed result of the stage that stopped the preparation, or <c>null</c> if the formula is ready to be
+        /// evaluated.
+        /// </summary>
+        public ExecutionResult? Failure { get; }
+
+        public IReadOnlyList<ISequence> Sequences => Parsing.Sequences;
+
+        public IReadOnlyDictionary<string, IExpressionNode> PrimitiveMap => Parsing.PrimitiveMap;
+
+        /// <summary>
+        /// <c>SUCCESS</c>, or the Error that stopped the preparation.
+        /// </summary>
+        public IError Error => Failure?.Error ?? Parsing.Error;
+
+        public bool Successful => Error.IsSuccess();
+
+        internal PreparedFormula(string formula, IParsingResult parsing, IValue metadata, IReadOnlyList<IWarning> warnings,
+            IEnvironment environment, int functionCount)
+        {
+            Formula = formula;
+            Parsing = parsing;
+            Metadata = metadata;
+            Warnings = warnings;
+            _environment = environment;
+            _functionCount = functionCount;
+        }
+
+        private PreparedFormula(string formula, ExecutionResult failure)
+        {
+            Formula = formula;
+            Parsing = ParsingResult.Failed(failure.Error);
+            Metadata = Value.Object(new Primitives.Object(), "{}");
+            Warnings = [];
+            Failure = failure;
+        }
+
+        internal static PreparedFormula Failed(string formula, ExecutionResult failure) => new(formula, failure);
+
+        /// <summary>
+        /// Whether the formula can be evaluated in an environment without being prepared again.
+        /// </summary>
+        public bool IsPreparedFor(IEnvironment environment)
+            => Failure == null && ReferenceEquals(environment, _environment) && Executor.FunctionCount(environment) == _functionCount;
     }
 
     public sealed class ExecutionResult : IExecutionResult
@@ -224,6 +499,12 @@ namespace FormuLang.NET.Core.Processing
         public IContext Context { get; }
 
         /// <summary>
+        /// Warnings of the preparation of the formula (since <c>core-1.2</c>); they never change the result. Only a cold
+        /// execution (<see cref="Executor.Execute(string, IContext)"/>) has them; see <see cref="PreparedFormula.Warnings"/>.
+        /// </summary>
+        public IReadOnlyList<IWarning> Warnings { get; }
+
+        /// <summary>
         /// The Error that aborted the execution, or <c>SUCCESS</c>.
         /// </summary>
         public IError Error { get; }
@@ -231,10 +512,14 @@ namespace FormuLang.NET.Core.Processing
         public bool Successful => Error.IsSuccess();
 
         public ExecutionResult(IValue value, IReadOnlyList<IError> validationErrors, IContext context)
+            : this(value, validationErrors, context, []) { }
+
+        public ExecutionResult(IValue value, IReadOnlyList<IError> validationErrors, IContext context, IReadOnlyList<IWarning> warnings)
         {
             Value = value;
             ValidationErrors = validationErrors;
             Context = context;
+            Warnings = warnings;
             Error = value.Type.Base == Types.ErrorName && value.Raw is IError error && error.IsFailed()
                 ? error
                 : Errors.Success();
@@ -247,7 +532,7 @@ namespace FormuLang.NET.Core.Processing
     }
 
     /// <summary>
-    /// Results of the iterations of an Iteration Context, in order (<see cref="Executor.ExecuteIterations"/>).
+    /// Results of the iterations of an Iteration Context, in order (<see cref="Executor.ExecuteIterations(string, IterationContext, bool)"/>).
     /// </summary>
     public sealed class IterationExecutionResult
     {

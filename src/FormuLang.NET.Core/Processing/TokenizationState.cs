@@ -25,13 +25,19 @@ namespace FormuLang.NET.Core.Processing
         // Text flags
         public bool EscapeSequence { get; set; }
 
-        public void Open(TokenType mode)
+        // Position of the open token
+        private int _line;
+        private int _column;
+
+        public void Open(TokenType mode, int line = 0, int column = 0)
         {
             if (IsTokenOpen)
                 throw new InvalidOperationException("A token is already open.");
 
             Mode = mode;
             _current.Clear();
+            _line = line;
+            _column = column;
         }
 
         public void Append(char c)
@@ -50,7 +56,7 @@ namespace FormuLang.NET.Core.Processing
             if (!IsTokenOpen)
                 throw new InvalidOperationException("No token is open.");
 
-            var token = new Token(Mode, _current.ToString());
+            var token = new Token(Mode, _current.ToString(), _line, _column);
             Tokens.Add(token);
 
             Mode = TokenType.None;
@@ -63,6 +69,6 @@ namespace FormuLang.NET.Core.Processing
             return token;
         }
 
-        public void Insert(TokenType type, string value) => Tokens.Add(new Token(type, value));
+        public void Insert(TokenType type, string value, int line, int column) => Tokens.Add(new Token(type, value, line, column));
     }
 }

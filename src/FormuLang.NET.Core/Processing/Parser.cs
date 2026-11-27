@@ -49,20 +49,30 @@ namespace FormuLang.NET.Core.Processing
         {
             try
             {
-                var sequences = new List<Sequence>();
+                IToken[] all = tokens.ToArray();
+                List<SequenceTokens> split = SplitIntoSequences(all);
+                var sequences = new List<Sequence>(split.Count);
+                var starts = new List<SequenceStart>(split.Count);
 
-                foreach (List<IToken> sequenceTokens in SplitIntoSequences(tokens))
+                for (int i = 0; i < split.Count; i++)
                 {
-                    var state = new State(sequenceTokens, _procedures);
+                    SequenceTokens sequenceTokens = split[i];
+
+                    if (ContinuationError(sequenceTokens, all) is ParseException continuation)
+                        throw continuation;
+
+                    var state = new State(sequenceTokens.Tokens, _procedures);
                     ExpressionNode root = state.ParseExpression(0);
 
                     if (state.Peek() is IToken unexpected)
                         throw new ParseException($"Unexpected {Describe(unexpected)} after a complete expression.");
 
                     sequences.Add(new Sequence(root));
+                    starts.Add(new SequenceStart(sequenceTokens.Tokens[0], sequenceTokens.Separator,
+                        i > 0 ? split[i - 1].Tokens[^1] : null, LineOf(sequenceTokens.Tokens[0], all)));
                 }
 
-                return new ParsingResult(sequences, Errors.Success());
+                return new ParsingResult(sequences, Errors.Success(), starts);
             }
             catch (ParseException ex)
             {
@@ -74,17 +84,26 @@ namespace FormuLang.NET.Core.Processing
 
         // Splitting into sequences
 
-        private static List<List<IToken>> SplitIntoSequences(IEnumerable<IToken> tokens)
+        /// <summary>
+        /// The tokens of a sequence, and the separator (<c>\n</c> or <c>;</c>) before it.
+        /// </summary>
+        private sealed record SequenceTokens(List<IToken> Tokens, IToken? Separator);
+
+        private static List<SequenceTokens> SplitIntoSequences(IToken[] all)
         {
-            IToken[] all = tokens.ToArray();
-            var sequences = new List<List<IToken>>();
+            var sequences = new List<SequenceTokens>();
             var current = new List<IToken>();
             var delimiters = new Stack<string>();
+            IToken? separator = null, lastSeparator = null;
 
             void Close()
             {
                 if (current.Count > 0)
-                    sequences.Add(current);
+                {
+                    sequences.Add(new SequenceTokens(current, separator));
+                    separator = lastSeparator = null;
+                }
+
                 current = [];
             }
 
@@ -115,7 +134,16 @@ namespace FormuLang.NET.Core.Processing
                 else if (IsOperator(token, "\n") || IsOperator(token, ";"))
                 {
                     if (delimiters.Count == 0)
+                    {
                         Close();
+
+                        // The separator directly before the next sequence: a ";" wins over the new lines after it
+                        if (sequences.Count > 0)
+                        {
+                            lastSeparator = token.Value == ";" || lastSeparator?.Value != ";" ? token : lastSeparator;
+                            separator = lastSeparator;
+                        }
+                    }
                     else if (token.Value == ";")
                         throw new ParseException("Unexpected \";\" inside a delimiter.");
                     // A new line inside a delimiter is ignored
@@ -135,6 +163,46 @@ namespace FormuLang.NET.Core.Processing
 
             Close();
             return sequences;
+        }
+
+        // Binary operators that cannot start an expression ("-", "(" and "[" can)
+        private static readonly HashSet<string> BinaryOnly =
+            InfixTranslation.Keys.Append("=>").Append(".").Where(symbol => symbol != "-").ToHashSet(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Line of a token: its position, or the number of new lines before it.
+        /// </summary>
+        private static int LineOf(IToken token, IToken[] all)
+        {
+            if (token.Line is int line)
+                return line;
+
+            int count = 1;
+            foreach (IToken t in all)
+            {
+                if (ReferenceEquals(t, token))
+                    break;
+                if (IsOperator(t, "\n"))
+                    count++;
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// A sequence after a new line that starts with a binary operator: probably the continuation of the previous line
+        /// (docs/standards/core/semantics/warnings.md, "Messages of the parsing errors").
+        /// </summary>
+        private static ParseException? ContinuationError(SequenceTokens sequence, IToken[] all)
+        {
+            IToken first = sequence.Tokens[0];
+
+            if (first.Type != TokenType.Operator || !BinaryOnly.Contains(first.Value) || sequence.Separator?.Value != "\n")
+                return null;
+
+            string op = first.Value;
+            return new ParseException($"Line {LineOf(first, all)} starts with \"{op}\", which has no left operand: a new line ends the " +
+                $"previous sequence. Put \"{op}\" at the end of the previous line, or the expression in parentheses.");
         }
 
         private static string Opening(string closing) => closing switch { ")" => "(", "]" => "[", _ => "{" };

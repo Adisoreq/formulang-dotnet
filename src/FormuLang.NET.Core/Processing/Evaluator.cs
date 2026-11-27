@@ -5,6 +5,7 @@ using FormuLang.NET.Abstractions.Processing;
 using FormuLang.NET.Abstractions.Structures;
 using FormuLang.NET.Core.Functions;
 using FormuLang.NET.Core.Primitives;
+using FormuLang.NET.Core.Structures;
 
 namespace FormuLang.NET.Core.Processing
 {
@@ -65,17 +66,106 @@ namespace FormuLang.NET.Core.Processing
         internal IValue EvaluateSequence(Sequence sequence, Scope scope, bool isFormulaSequence)
         {
             var results = new Dictionary<ExpressionNode, IValue>(ReferenceEqualityComparer.Instance);
+            WriteTracker? tracker = scope.Context.Memory is ContextMemory memory ? new WriteTracker(memory) : null;
+            IValue value;
 
             if (SkipsBranches(sequence, scope.Context.Environment))
-                return EvaluateSelected(sequence.Root, sequence, results, scope, isFormulaSequence);
-
-            foreach (ExpressionNode node in sequence.Queue)
             {
-                bool declaration = isFormulaSequence && node == sequence.Root;
-                results[node] = EvaluateNode(node, results, scope, declaration);
+                value = EvaluateSelected(sequence.Root, sequence, results, scope, isFormulaSequence, tracker);
+            }
+            else
+            {
+                foreach (ExpressionNode node in sequence.Queue)
+                {
+                    bool declaration = isFormulaSequence && node == sequence.Root;
+                    results[node] = EvaluateNode(node, results, scope, declaration, tracker);
+                }
+
+                value = results[sequence.Root];
             }
 
-            return results[sequence.Root];
+            if (tracker?.Writes != null)
+                DiscardUnselectedWrites(sequence.Root, results, tracker);
+
+            return value;
+        }
+
+        // Memory writes on the selected path only (docs/core/context.md, "Memory", rule 2)
+        //
+        // All the arguments of IF, AND and OR are computed before the call, so a STORE or CLEAR in a branch of IF that is
+        // not selected, or in an argument of AND / OR after the deciding one, is executed too. Its write is collected with
+        // the call node that made it (also through a lambda invoked by the call), and discarded when the sequence is
+        // complete.
+
+        /// <summary>
+        /// Writes to the memory of the context made while a sequence is evaluated: the range of the collected writes made
+        /// by every call node, so the writes of the nodes that are not on the selected path can be discarded.
+        /// </summary>
+        private sealed class WriteTracker(ContextMemory memory)
+        {
+            public ContextMemory Memory { get; } = memory;
+            public Dictionary<ExpressionNode, (int From, int To)>? Writes { get; set; }
+        }
+
+        private const string AndName = "AND";
+        private const string OrName = "OR";
+
+        private static void DiscardUnselectedWrites(ExpressionNode root, Dictionary<ExpressionNode, IValue> results, WriteTracker tracker)
+        {
+            var selected = new HashSet<ExpressionNode>(ReferenceEqualityComparer.Instance);
+            MarkSelected(root, results, selected);
+
+            foreach (var (node, (from, to)) in tracker.Writes!)
+            {
+                if (!selected.Contains(node))
+                    tracker.Memory.Discard(from, to);
+            }
+        }
+
+        /// <summary>
+        /// Marks the nodes on the selected path: the condition of <c>IF</c> and its selected branch (none for a condition
+        /// that is not a Boolean, because <c>IF</c> then selects no branch), the arguments of <c>AND</c> / <c>OR</c> up to
+        /// the deciding one, and every child of the other nodes.
+        /// </summary>
+        private static void MarkSelected(ExpressionNode node, Dictionary<ExpressionNode, IValue> results, HashSet<ExpressionNode> selected)
+        {
+            selected.Add(node);
+
+            if (node is not CallNode call)
+                return;
+
+            IReadOnlyList<ExpressionNode> children = call.Children;
+
+            if (call.Name == IfName && children.Count == 3)
+            {
+                MarkSelected(children[0], results, selected);
+
+                if (results.TryGetValue(children[0], out IValue? condition) && condition.Raw is bool selectThen
+                    && condition.Type.Base == Types.BooleanName)
+                {
+                    MarkSelected(selectThen ? children[1] : children[2], results, selected);
+                }
+
+                return;
+            }
+
+            if ((call.Name == AndName || call.Name == OrName) && children.Count >= 2)
+            {
+                bool deciding = call.Name == OrName;
+
+                foreach (ExpressionNode child in children)
+                {
+                    MarkSelected(child, results, selected);
+
+                    if (results.TryGetValue(child, out IValue? value) && value.Type.Base == Types.BooleanName && value.Raw is bool b && b == deciding)
+                        return;
+                }
+
+                return;
+            }
+
+            foreach (ExpressionNode child in children)
+                MarkSelected(child, results, selected);
         }
 
         // Skipping the branch of IF that is not selected (an optimization with the same result)
@@ -125,7 +215,9 @@ namespace FormuLang.NET.Core.Processing
                     return IsSideEffectFree(lambda.Body.Root, environment, ref hasIf);
 
                 case CallNode call:
-                    if (environment.GetFunction(call.Name) is not Function { SideEffectFree: true } function || function is Procedure)
+                    // STORE and CLEAR are allowed: their writes in a branch that is not selected are discarded anyway
+                    if (environment.GetFunction(call.Name) is not Function function
+                        || !(function is Procedure { WritesMemoryOnly: true } || (function.SideEffectFree && function is not Procedure)))
                         return false;
 
                     if (call.Name == IfName)
@@ -171,7 +263,7 @@ namespace FormuLang.NET.Core.Processing
         /// a Boolean. A condition of another type goes to <c>IF</c> with both branches, as in the queue.
         /// </summary>
         private IValue EvaluateSelected(ExpressionNode node, Sequence sequence, Dictionary<ExpressionNode, IValue> results,
-            Scope scope, bool isFormulaSequence)
+            Scope scope, bool isFormulaSequence, WriteTracker? tracker)
         {
             if (results.TryGetValue(node, out IValue? known))
                 return known;
@@ -180,26 +272,26 @@ namespace FormuLang.NET.Core.Processing
 
             if (node is CallNode { Name: IfName, Children.Count: 3 } call)
             {
-                IValue condition = EvaluateSelected(call.Children[0], sequence, results, scope, isFormulaSequence);
+                IValue condition = EvaluateSelected(call.Children[0], sequence, results, scope, isFormulaSequence, tracker);
 
                 if (condition.Type.Base == Types.BooleanName)
                 {
                     // IF(true, then, else) returns then, IF(false, then, else) returns else, unchanged
-                    value = EvaluateSelected(condition.Raw is true ? call.Children[1] : call.Children[2], sequence, results, scope, isFormulaSequence);
+                    value = EvaluateSelected(condition.Raw is true ? call.Children[1] : call.Children[2], sequence, results, scope, isFormulaSequence, tracker);
                     results[node] = value;
                     return value;
                 }
             }
 
             foreach (ExpressionNode child in node.Children)
-                EvaluateSelected(child, sequence, results, scope, isFormulaSequence);
+                EvaluateSelected(child, sequence, results, scope, isFormulaSequence, tracker);
 
-            value = EvaluateNode(node, results, scope, isFormulaSequence && node == sequence.Root);
+            value = EvaluateNode(node, results, scope, isFormulaSequence && node == sequence.Root, tracker);
             results[node] = value;
             return value;
         }
 
-        private IValue EvaluateNode(ExpressionNode node, Dictionary<ExpressionNode, IValue> results, Scope scope, bool isRoot)
+        private IValue EvaluateNode(ExpressionNode node, Dictionary<ExpressionNode, IValue> results, Scope scope, bool isRoot, WriteTracker? tracker)
         {
             switch (node)
             {
@@ -222,14 +314,14 @@ namespace FormuLang.NET.Core.Processing
                     return Value.Delegate(new Lambda(lambda, this, scope), lambda.Key);
 
                 case CallNode call:
-                    return Call(call, results, scope.Context);
+                    return Call(call, results, scope.Context, tracker);
 
                 default:
                     throw new NotSupportedException($"Unsupported expression node {node.GetType().Name}.");
             }
         }
 
-        private static IValue Call(CallNode call, Dictionary<ExpressionNode, IValue> results, IContext context)
+        private static IValue Call(CallNode call, Dictionary<ExpressionNode, IValue> results, IContext context, WriteTracker? tracker)
         {
             IFunction? function = context.Environment.GetFunction(call.Name);
 
@@ -248,7 +340,17 @@ namespace FormuLang.NET.Core.Processing
                     : results[child];
             }
 
-            return function.Invoke(arguments, context);
+            if (tracker == null)
+                return function.Invoke(arguments, context);
+
+            int before = tracker.Memory.PendingCount;
+            IValue value = function.Invoke(arguments, context);
+            int after = tracker.Memory.PendingCount;
+
+            if (after > before)
+                (tracker.Writes ??= new(ReferenceEqualityComparer.Instance))[call] = (before, after);
+
+            return value;
         }
 
         // Reading variables (docs/semantics/evaluation.md, "Direct extraction")
