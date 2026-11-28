@@ -1,7 +1,7 @@
 # Getting started
 
 > [!NOTE]
-> FormuLang.NET `1.2` implements the standards `core-1.2` and `stock-1.2` (and so `core-1.0`, `core-1.1`, `stock-1.0` and `stock-1.1`, with which they are backward compatible), and the formula models of the standard. Within `1.x` the public API changes only in a backward-compatible way.
+> FormuLang.NET `1.3` implements the standards `core-1.3` and `stock-1.3` (and so `core-1.0` - `core-1.2` and `stock-1.0` - `stock-1.2`, with which they are backward compatible), and the formula models of the standard. Within `1.x` the public API changes only in a backward-compatible way.
 
 ## Requirements
 

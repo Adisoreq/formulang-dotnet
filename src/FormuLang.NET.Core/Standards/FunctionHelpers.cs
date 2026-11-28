@@ -29,6 +29,14 @@ namespace FormuLang.NET.Core.Standards
         public static ArgumentTemplate DelegateArg(string name) => ArgumentTemplate.Of(name, Types.Delegate);
         public static ArgumentTemplate AnyArg(string name) => ArgumentTemplate.Any(name);
 
+        /// <summary><c>Number, Null</c> (core-1.3, "Missing values").</summary>
+        public static ArgumentTemplate NullableNumberArg(string name) => ArgumentTemplate.Of(name, Types.Number, nullable: true);
+
+        /// <summary><c>Array&lt;Number&gt;</c> whose elements may also be <c>null</c> (core-1.3, "Missing values").</summary>
+        public static ArgumentTemplate NullableNumberArrayArg(string name) => ArgumentTemplate.ArrayOf(name, Types.Number, nullable: true);
+
+        public static ArgumentTemplate NullArg(string name) => ArgumentTemplate.Of(name, Types.Null);
+
         // Argument access
 
         public static double Num(IValue value) => (double)value.Raw!;
@@ -41,6 +49,9 @@ namespace FormuLang.NET.Core.Standards
         public static bool IsWhole(double value) => double.IsFinite(value) && Math.Floor(value) == value;
 
         public static bool IsError(IValue value) => value.Type.Base == Types.ErrorName;
+
+        /// <summary>Whether a value is <c>null</c> (core-1.3, "Missing values").</summary>
+        public static bool IsNull(IValue value) => value.Type.Base == Types.NullName;
 
         // Results
 
@@ -74,6 +85,10 @@ namespace FormuLang.NET.Core.Standards
         public static IValue ArgumentError(string message) => Value.Error(Errors.ArgumentError(message), "");
 
         public static IValue InvalidIndexError(string message) => Value.Error(Errors.InvalidIndexError(message), "");
+
+        public static IValue InvalidKeyError(string message) => Value.Error(Errors.InvalidKeyError(message), "");
+
+        public static IValue Null() => Value.Null("null");
 
         // Delegates
 

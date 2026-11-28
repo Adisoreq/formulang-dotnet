@@ -11,7 +11,7 @@ FormuLang.NET.Abstractions  ◄──  FormuLang.NET.Core  ◄──  FormuLang.
 | :------ | :--------- | :------------- |
 | `FormuLang.NET.Abstractions` | - | Contracts shared by every module. A host application or an extension can depend only on this project. |
 | `FormuLang.NET.Core` | Abstractions | Implementation of the [Core standard](https://github.com/Adisoreq/FormuLang/blob/main/docs/standards/core/README.md) and of the execution pipeline. |
-| `FormuLang.NET.Extensions.Stock` | Abstractions, Core | Implementation of the Stock extension standard: `Stock.Candle`, the Stock context types, the formula registry, the Stock functions (`LOAD_INDICATOR`, `LOAD_PATTERN`, `LOAD_CANDLES`, the series functions, `SCORE`, ...) and the formula models (`Models`). |
+| `FormuLang.NET.Extensions.Stock` | Abstractions, Core | Implementation of the Stock extension standard: `Stock.Candle`, the Stock context types, the formula registry, the Stock functions (`LOAD_INDICATOR`, `LOAD_PATTERN`, `LOAD_CANDLES`, the series functions, `SCORE`, `SIGNAL_SCORE`, ...) and the formula models (`Models`). |
 | `FormuLang.NET.Core.Tests`, `FormuLang.NET.Extensions.Stock.Tests` | Core, Extensions.Stock | Tests built from the examples of the standard documents (xUnit). |
 | `FormuLang.NET.Conformance.Tests` | Core, Extensions.Stock | Runner of the language-independent conformance tests of the standard (JSON test cases copied from the standard repository). |
 | `CalculatorCLI` (sample) | Core, Extensions.Stock | Executes formulas from the command line. |

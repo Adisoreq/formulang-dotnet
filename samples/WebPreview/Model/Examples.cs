@@ -37,7 +37,7 @@ namespace WebPreview.Model
 
         public static readonly IReadOnlyList<StandardDefinition> Standards =
         [
-            new(StandardId.Core, "Core 1.2", "core-1.2",
+            new(StandardId.Core, "Core 1.3", "core-1.3",
             [
                 new(ContextKind.Default, StandardId.Core, "Default Context",
                     "Executes the formula once. The result is the value of the last sequence.", []),
@@ -48,7 +48,7 @@ namespace WebPreview.Model
                     "Executes the formula once per frame as time passes: animations, simulations, clocks. The memory keeps a state between the frames.",
                     TimeConstants),
             ]),
-            new(StandardId.Stock, "Stock 1.2", "stock-1.2",
+            new(StandardId.Stock, "Stock 1.3", "stock-1.3",
             [
                 new(ContextKind.Stock, StandardId.Stock, "Stock Context",
                     "Iterates over the candles of the chart; I is the current candle.", StockConstants),
@@ -200,6 +200,26 @@ namespace WebPreview.Model
                 $all = AND(1 < 2, 2 < 3, 3 < 4)
                 $any = OR(false, false, true)
                 [$guard, $safe, $all, $any, false && ERROR("never returned")]
+                """),
+            new("missing", "Missing values", "Core 1.3: comparisons and arithmetic with null, GET with a fallback, APPEND, PUT, ENTRIES and MERGE.",
+                """
+                # Core 1.3: missing values (null) and the functions that return a copy.
+                $ema = [null, null, 2, 3]               # an indicator during its warm-up
+                $above = MAP([1, 2, 3, 4], (c, i) => c > $ema[i])
+                $change = 5 - null                       # null: one missing value makes the result unknown
+
+                $levels = APPEND([10, 20], 30)           # a new array; [10, 20] does not change
+                $checks = PUT({ trend: true }, "volume", false)
+
+                {
+                  above: $above,                         # null > x is false, not an Error
+                  change: $change,
+                  low: MIN([1, null, 3]),                # null, not skipped
+                  previous: GET($ema, -1, 0),            # a fallback instead of INVALID_INDEX_ERROR
+                  levels: REMOVE(INSERT($levels, 0, 5), 3),
+                  met: MAP(FILTER(ENTRIES($checks), (e) => e[1]), (e) => e[0]),
+                  values: VALUES(MERGE($checks, { rsi: true }, { trend: false }))
+                }
                 """),
         ];
 
@@ -575,6 +595,43 @@ namespace WebPreview.Model
                 IF($uptrend && CROSSOVER(CLOSE, $fast), BUY, IF($downtrend && CROSSUNDER(CLOSE, $fast), SELL, NEUTRAL))
                 """,
                 0.8, 3),
+            new("signal-score", "Buy and sell conditions", "Stock 1.3: SIGNAL_SCORE of the buy and the sell conditions, weighted, without warm-up checks.",
+                """
+                <@ {
+                  id: "ema-macd-signal",
+                  name: "Buy and sell conditions",
+                  context: "Stock.Strategy",
+                  parameters: {
+                    trend: { type: "Number", default: 50, min: 2, description: "Period of the trend EMA" },
+                    threshold: { type: "Number", default: 0.6, min: 0, max: 1, description: "Strength from which the strategy trades" }
+                  },
+                  stock: {
+                    checks: {
+                      aboveEma: "Close above the EMA", macdUp: "MACD above its signal", rsiUp: "RSI above 50",
+                      belowEma: "Close below the EMA", macdDown: "MACD below its signal", rsiDown: "RSI below 50"
+                    }
+                  }
+                } @>
+                # Stock 1.3: no READY checks; while an indicator is null, its comparisons are false and the signal is 0.
+                $ema = LOAD_INDICATOR("EMA", { period: PARAMETERS.trend })
+                $macd = LOAD_INDICATOR("MACD", { }, { output: "macd" })
+                $macdSignal = LOAD_INDICATOR("MACD", { }, { output: "signal" })
+                $rsi = LOAD_INDICATOR("RSI", { period: 14 })
+
+                # The sell conditions are written directly, not as a negation of the buy conditions
+                $buy = { aboveEma: CLOSE[I] > $ema[I], macdUp: $macd[I] > $macdSignal[I], rsiUp: $rsi[I] > 50 }
+                $sell = { belowEma: CLOSE[I] < $ema[I], macdDown: $macd[I] < $macdSignal[I], rsiDown: $rsi[I] < 50 }
+
+                # SCORE($buy) - SCORE($sell), from -1 to 1; the trend counts twice
+                $strength = SIGNAL_SCORE($buy, $sell, { aboveEma: 2, belowEma: 2 })
+
+                {
+                  signal: IF(ABS($strength) >= PARAMETERS.threshold, $strength, NEUTRAL),
+                  reason: FORMAT("Strength {:.2}", [$strength]),
+                  checks: MERGE($buy, $sell)
+                }
+                """,
+                1, 3),
             new(NewFormula, "New strategy", "An empty strategy: return a signal from SELL (-1) to BUY (1) for every candle.", "",
                 1, 1),
         ];

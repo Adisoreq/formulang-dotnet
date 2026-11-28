@@ -102,7 +102,7 @@ namespace FormuLang.NET.Core.Tests
         [InlineData("AVG([1, 2, 3])", "2")] [InlineData("AVG([10, 20, 30])", "20")] [InlineData("AVG([])", "OPERATION_ERROR")]
         [InlineData("LEN([1, 2, 3])", "3")] [InlineData("LEN([])", "0")] [InlineData("LEN([[1, 2], 3])", "2")]
         [InlineData("MAX(3, 5)", "5")] [InlineData("MAX(5, 15, 25, 10, 20)", "25")] [InlineData("MAX([4, 5, 7, 9])", "9")] [InlineData("MAX([4, \"5\"])", "ARGUMENT_ERROR")]
-        [InlineData("MAX([15, \"25\", 20])", "ARGUMENT_ERROR")] [InlineData("MAX([])", "OPERATION_ERROR")]
+        [InlineData("MAX([15, \"25\", 20])", "ARGUMENT_ERROR")] [InlineData("MAX([])", "null")]
         [InlineData("MAX([true, 4, 5, 7, \"9\"], (e) => IF(ISNUM(e), e, 0))", "7")]
         [InlineData("MAX([ { name: \"Anna\", age: 15 }, { name: \"Billy\", age: 18 } ], (e) => e.age)", "18")]
         [InlineData("MAX([1], (e) => \"x\")", "OPERATION_ERROR")]

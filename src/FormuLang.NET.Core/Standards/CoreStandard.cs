@@ -6,22 +6,22 @@ using FormuLang.NET.Core.Structures;
 namespace FormuLang.NET.Core.Standards
 {
     /// <summary>
-    /// The Core standard (docs/standards/core/README.md).
+    /// The Core standard, <c>core-1.3</c> (docs/standards/core/README.md).
     /// </summary>
     public sealed class CoreStandard : IStandard
     {
-        public const string Identifier = "core-1.2";
+        public const string Identifier = "core-1.3";
 
         /// <summary>
         /// Earlier versions that this version is backward compatible with; they are in <c>STANDARDS</c> too.
         /// </summary>
-        public static IReadOnlyList<string> CompatibleIdentifiers { get; } = ["core-1.0", "core-1.1"];
+        public static IReadOnlyList<string> CompatibleIdentifiers { get; } = ["core-1.0", "core-1.1", "core-1.2"];
 
         public static CoreStandard Instance { get; } = new();
 
         public string ID => "core";
 
-        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 2 };
+        public IStandardVersion Version { get; } = new StandardVersion { Major = 1, Minor = 3 };
 
         public string Name => "Core";
 

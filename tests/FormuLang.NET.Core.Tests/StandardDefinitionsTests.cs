@@ -100,11 +100,12 @@ namespace FormuLang.NET.Core.Tests
         {
             var env = Env.Create();
 
-            // core-1.2 is backward compatible, so core-1.0 and core-1.1 are listed too
+            // core-1.3 is backward compatible, so core-1.0 - core-1.2 are listed too
             Assert.True(env.Supports("core-1.0"));
             Assert.True(env.Supports("core-1.1"));
             Assert.True(env.Supports("core-1.2"));
-            Assert.Equal("[\"core-1.0\", \"core-1.1\", \"core-1.2\"]", env.GetProperty("STANDARDS").GetValue().ToString());
+            Assert.True(env.Supports("core-1.3"));
+            Assert.Equal("[\"core-1.0\", \"core-1.1\", \"core-1.2\", \"core-1.3\"]", env.GetProperty("STANDARDS").GetValue().ToString());
             Assert.Equal(Math.E, ((Value)env.GetProperty("E").GetValue()).AsNumber());
             Assert.Equal(Math.PI, ((Value)env.GetProperty("PI").GetValue()).AsNumber());
             Assert.Equal(1.618033988749894, ((Value)env.GetProperty("PHI").GetValue()).AsNumber()!.Value, tolerance: 1e-14);
@@ -130,7 +131,7 @@ namespace FormuLang.NET.Core.Tests
             env.RegisterStandard("stock-1.0");
 
             Assert.True(env.Supports("stock-1.0"));
-            Assert.Equal("[\"core-1.0\", \"core-1.1\", \"core-1.2\", \"stock-1.0\"]", env.GetProperty("STANDARDS").GetValue().ToString());
+            Assert.Equal("[\"core-1.0\", \"core-1.1\", \"core-1.2\", \"core-1.3\", \"stock-1.0\"]", env.GetProperty("STANDARDS").GetValue().ToString());
         }
 
         // docs/syntax/literals.md, "Number"

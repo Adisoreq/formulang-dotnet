@@ -8,7 +8,7 @@ namespace FormuLang.NET.Extensions.Stock
 {
     /// <summary>
     /// Series functions (docs/standards/stock/functions/README.md, "Series functions") and the strategy function
-    /// <c>SCORE</c> of <c>stock-1.2</c>.
+    /// <c>SCORE</c> of <c>stock-1.2</c>, and <c>SIGNAL_SCORE</c> of <c>stock-1.3</c>.
     /// </summary>
     /// <remarks>
     /// Common rules of the series functions: they can be called only in a Stock Context; a series is an Array of <c>N</c>
@@ -28,6 +28,7 @@ namespace FormuLang.NET.Extensions.Stock
         public const string BarsSinceName = "BARS_SINCE";
         public const string ValueWhenName = "VALUE_WHEN";
         public const string ScoreName = "SCORE";
+        public const string SignalScoreName = "SIGNAL_SCORE";
 
         private static ArgumentTemplate SeriesArg(string name) => ArgumentTemplate.Of(name, Types.Array);
         private static ArgumentTemplate NumberArg(string name) => ArgumentTemplate.Of(name, Types.Number);
@@ -291,19 +292,24 @@ namespace FormuLang.NET.Extensions.Stock
 
         /// <summary>
         /// <c>SCORE(conditions, weights?)</c>: the share of <c>true</c> values of an Object or an Array of Booleans,
-        /// optionally weighted.
+        /// optionally weighted. Since <c>stock-1.3</c> a <c>null</c> condition is a condition that is not met.
         /// </summary>
         public static Function Score { get; } = SeriesFunction(ScoreName,
             new FunctionOverload([ArgumentTemplate.Of("conditions", Types.Object)], (a, _) => ScoreObject((IObject)a[0].Raw!, null)),
-            new FunctionOverload([ArgumentTemplate.ArrayOf("conditions", Types.Boolean)], (a, _) => ScoreArray(Elements(a[0]), null)),
+            new FunctionOverload([Conditions("conditions")], (a, _) => ScoreArray(Elements(a[0]), null)),
             new FunctionOverload([ArgumentTemplate.Of("conditions", Types.Object), ArgumentTemplate.Of("weights", Types.Object)],
                 (a, _) => ScoreObject((IObject)a[0].Raw!, (IObject)a[1].Raw!)),
-            new FunctionOverload([ArgumentTemplate.ArrayOf("conditions", Types.Boolean), ArgumentTemplate.ArrayOf("weights", Types.Number)],
+            new FunctionOverload([Conditions("conditions"), ArgumentTemplate.ArrayOf("weights", Types.Number)],
                 (a, _) => ScoreArray(Elements(a[0]), Elements(a[1]))));
+
+        /// <summary>
+        /// An <c>Array&lt;Boolean&gt;</c> of conditions whose elements may also be <c>null</c> (<c>stock-1.3</c>).
+        /// </summary>
+        private static ArgumentTemplate Conditions(string name) => ArgumentTemplate.ArrayOf(name, Types.Boolean, nullable: true);
 
         private static IValue Share(double met, double total) => Value.Number(total == 0 ? 0 : met / total);
 
-        private static IValue ScoreObject(IObject conditions, IObject? weights)
+        private static IValue ScoreObject(IObject conditions, IObject? weights, string name = ScoreName)
         {
             var values = new List<(string Key, bool Value)>();
 
@@ -314,8 +320,15 @@ namespace FormuLang.NET.Extensions.Stock
                 if (value.Type.Base == Types.ErrorName)
                     return value;
 
+                // stock-1.3: a null condition is a condition that is not met
+                if (IsNull(value))
+                {
+                    values.Add((key, false));
+                    continue;
+                }
+
                 if (value.Type.Base != Types.BooleanName)
-                    return ArgumentError($"The condition \"{key}\" of \"{ScoreName}\" is not a Boolean.");
+                    return ArgumentError($"The condition \"{key}\" of \"{name}\" is not a Boolean.");
 
                 values.Add((key, (bool)value.Raw!));
             }
@@ -331,7 +344,7 @@ namespace FormuLang.NET.Extensions.Stock
                     return weight;
 
                 if (weight.Type.Base != Types.NumberName)
-                    return ArgumentError($"The weight \"{key}\" of \"{ScoreName}\" is not a Number.");
+                    return ArgumentError($"The weight \"{key}\" of \"{name}\" is not a Number.");
 
                 weightOf[key] = Numeric(weight);
                 weightOrder.Add(key);
@@ -340,13 +353,13 @@ namespace FormuLang.NET.Extensions.Stock
             foreach (string key in weightOrder)
             {
                 if (!values.Any(v => v.Key == key))
-                    return InvalidKeyError($"The weight \"{key}\" of \"{ScoreName}\" is not a key of the conditions.");
+                    return InvalidKeyError($"The weight \"{key}\" of \"{name}\" is not a key of the conditions.");
             }
 
             foreach (string key in weightOrder)
             {
                 if (weightOf[key] < 0)
-                    return OperationError($"The weight \"{key}\" of \"{ScoreName}\" is negative.");
+                    return OperationError($"The weight \"{key}\" of \"{name}\" is negative.");
             }
 
             double met = 0, total = 0;
@@ -363,10 +376,10 @@ namespace FormuLang.NET.Extensions.Stock
             return Share(met, total);
         }
 
-        private static IValue ScoreArray(IValue[] conditions, IValue[]? weights)
+        private static IValue ScoreArray(IValue[] conditions, IValue[]? weights, string name = ScoreName)
         {
             if (weights != null && weights.Length != conditions.Length)
-                return OperationError($"The conditions and the weights of \"{ScoreName}\" have different lengths.");
+                return OperationError($"The conditions and the weights of \"{name}\" have different lengths.");
 
             double met = 0, total = 0;
 
@@ -375,7 +388,7 @@ namespace FormuLang.NET.Extensions.Stock
                 double weight = weights == null ? 1 : Numeric(weights[i]);
 
                 if (weight < 0)
-                    return OperationError($"A weight of \"{ScoreName}\" is negative.");
+                    return OperationError($"A weight of \"{name}\" is negative.");
 
                 total += weight;
 
@@ -384,6 +397,82 @@ namespace FormuLang.NET.Extensions.Stock
             }
 
             return Share(met, total);
+        }
+
+        // SIGNAL_SCORE (stock-1.3; it does not need a Stock Context): docs/standards/stock/functions/SIGNAL_SCORE.md
+
+        /// <summary>
+        /// <c>SIGNAL_SCORE(buy, sell, weights?)</c>: <c>SCORE(buy) - SCORE(sell)</c>, the strength of a signal from
+        /// <c>-1</c> to <c>1</c>. <c>buy</c> and <c>sell</c> are Objects or Arrays of Booleans (or <c>null</c>), in any
+        /// combination; the optional <c>weights</c> (only with Objects) is one Object for the keys of both sides.
+        /// </summary>
+        public static Function SignalScore { get; } = CreateSignalScore();
+
+        private static Function CreateSignalScore()
+        {
+            Func<string, ArgumentTemplate>[] sides = [name => ArgumentTemplate.Of(name, Types.Object), Conditions];
+
+            FunctionOverload[] overloads =
+            [
+                .. sides.SelectMany(buy => sides.Select(sell =>
+                    new FunctionOverload([buy("buy"), sell("sell")], (a, _) => SignalScoreOf(a[0], a[1], null)))),
+                new FunctionOverload(
+                    [ArgumentTemplate.Of("buy", Types.Object), ArgumentTemplate.Of("sell", Types.Object), ArgumentTemplate.Of("weights", Types.Object)],
+                    (a, _) => SignalScoreOf(a[0], a[1], (IObject)a[2].Raw!)),
+            ];
+
+            return SeriesFunction(SignalScoreName, overloads);
+        }
+
+        /// <summary>
+        /// First the keys of <paramref name="weights"/> that are keys of neither side (<c>INVALID_KEY_ERROR</c>), then
+        /// <c>SCORE</c> of the buy side and of the sell side, each with the weights of its own keys (a key of both sides
+        /// gets its weight on both).
+        /// </summary>
+        private static IValue SignalScoreOf(IValue buy, IValue sell, IObject? weights)
+        {
+            if (weights != null)
+            {
+                IObject buyConditions = (IObject)buy.Raw!, sellConditions = (IObject)sell.Raw!;
+
+                foreach (string key in weights.Keys)
+                {
+                    if (!buyConditions.HasKey(key) && !sellConditions.HasKey(key))
+                        return InvalidKeyError($"The weight \"{key}\" of \"{SignalScoreName}\" is not a key of the buy or the sell conditions.");
+                }
+            }
+
+            IValue buyScore = SideScore(buy, weights);
+            if (buyScore.Type.Base == Types.ErrorName)
+                return buyScore;
+
+            IValue sellScore = SideScore(sell, weights);
+            if (sellScore.Type.Base == Types.ErrorName)
+                return sellScore;
+
+            return Value.Number(Numeric(buyScore) - Numeric(sellScore));
+        }
+
+        private static IValue SideScore(IValue side, IObject? weights)
+        {
+            if (side.Type.Base == Types.ArrayName)
+                return ScoreArray(Elements(side), null, SignalScoreName);
+
+            var conditions = (IObject)side.Raw!;
+            return ScoreObject(conditions, weights == null ? null : WeightsFor(conditions, weights), SignalScoreName);
+        }
+
+        /// <summary>
+        /// The weights of the keys of <paramref name="weights"/> that are keys of <paramref name="conditions"/>.
+        /// </summary>
+        private static IObject WeightsFor(IObject conditions, IObject weights)
+        {
+            var result = new Core.Primitives.Object();
+
+            foreach (string key in weights.Keys.Where(conditions.HasKey))
+                result.InitVariable(key, weights.GetProperty(key).GetValue());
+
+            return result;
         }
     }
 }

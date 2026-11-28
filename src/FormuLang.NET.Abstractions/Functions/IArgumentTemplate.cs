@@ -29,5 +29,12 @@ namespace FormuLang.NET.Abstractions.Functions
         /// Determines whether the argument may be omitted
         /// </summary>
         public bool Optional { get; }
+
+        /// <summary>
+        /// Determines whether the argument, or with an <see cref="ElementType"/> every element, may also be <c>null</c>:
+        /// the base types <c>Number, Null</c> of a collection template (since <c>core-1.3</c>,
+        /// docs/standards/core/README.md, "Missing values"). <c>false</c> by default.
+        /// </summary>
+        public bool Nullable => false;
     }
 }

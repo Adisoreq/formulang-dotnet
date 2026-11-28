@@ -1,6 +1,6 @@
 # FormuLang.NET.Extensions.Stock
 
-**Stock** standard (`stock-1.2`) of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet): market data in [**FormuLang**](https://github.com/Adisoreq/FormuLang) formulas. Indicators, candle patterns and trading strategies are formulas executed once for every candle of a chart.
+**Stock** standard (`stock-1.3`) of [FormuLang.NET](https://github.com/Adisoreq/formulang-dotnet): market data in [**FormuLang**](https://github.com/Adisoreq/FormuLang) formulas. Indicators, candle patterns and trading strategies are formulas executed once for every candle of a chart.
 
 ## Usage
 
@@ -72,7 +72,7 @@ A `StrategyInstance` gives the `StrategySignals`: every signal that is not `NEUT
 
 ## Features
 
-- The `Stock.Candle` type (`Candle`) and the functions `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`, `LOAD_CANDLES`, `LAG`, `WINDOW`, the series functions (`READY`, `CROSSOVER`, `CROSSUNDER`, `HIGHEST`, `LOWEST`, `RISING`, `FALLING`, `BARS_SINCE`, `VALUE_WHEN`) and `SCORE`.
+- The `Stock.Candle` type (`Candle`) and the functions `CANDLE`, `IS_BULLISH`, `IS_BEARISH`, `LOAD_INDICATOR`, `LOAD_PATTERN`, `LOAD_CANDLES`, `LAG`, `WINDOW`, the series functions (`READY`, `CROSSOVER`, `CROSSUNDER`, `HIGHEST`, `LOWEST`, `RISING`, `FALLING`, `BARS_SINCE`, `VALUE_WHEN`), `SCORE` and `SIGNAL_SCORE`.
 - Context types derived from the Core Iteration Context: `StockContext` (with `TIMEFRAME`, `INSTRUMENT` and other timeframes, `StockContextOptions`), `IndicatorContext`, `PatternContext` and `StrategyContext` (with `PARAMETERS` and signal objects), with the checks of their expected results in `StockExecutor`.
 - The **formula registry** (`FormulaRegistry`) with indicators and patterns, also read from the metadata of their formulas (`AddFormula`, `AddDefinition`); loaded series are computed once and reused.
 - The **formula models** (`Models`): definitions, instances, runs and live runs.

@@ -42,12 +42,19 @@ namespace FormuLang.NET.Core.Utils
             if (template.AnyType)
                 return true;
 
+            // core-1.3: a template may also accept null ("Missing values")
+            bool nullable = template.Nullable;
+
             if (template.ElementType != null)
             {
+                string elementBase = template.ElementType.Base;
                 return value.Raw is IValue[] elements
                     && value.Type.Base == Types.ArrayName
-                    && elements.All(e => e.Type.Base == template.ElementType.Base);
+                    && elements.All(e => e.Type.Base == elementBase || (nullable && e.Type.Base == Types.NullName));
             }
+
+            if (nullable && value.Type.Base == Types.NullName)
+                return true;
 
             IType valueType = value.Type;
             IType templateType = template.Type;

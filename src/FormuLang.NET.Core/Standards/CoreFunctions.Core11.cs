@@ -42,7 +42,11 @@ namespace FormuLang.NET.Core.Standards
             Fn("STDEV_S", Overload((a, _) => Variance(Arr(a[0]), sample: true, root: true), NumberArrayArg("numbers"))),
 
             // Objects
-            Fn("MERGE", Overload((a, _) => Merge(Obj(a[0]), Obj(a[1])), ObjectArg("object1"), ObjectArg("object2"))),
+            Fn("MERGE",
+                Overload((a, _) => Merge(Obj(a[0]), Obj(a[1])), ObjectArg("object1"), ObjectArg("object2")),
+                // core-1.3: more than two objects, merged from the left
+                Overload((a, _) => a.Skip(1).Aggregate(a[0], (merged, next) => Merge(Obj(merged), Obj(next))),
+                    ObjectArg("object1"), ObjectArg("object2"), ArgumentTemplate.Of("objects", Types.Object, multiple: true))),
         ];
 
         /// <summary>

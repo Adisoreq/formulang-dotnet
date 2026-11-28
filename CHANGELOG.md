@@ -8,7 +8,28 @@
 
 All notable changes of **FormuLang.NET**. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the library uses [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-28
+
+**Supported standards:** `core-1.3`, `stock-1.3` ([`Adisoreq/FormuLang@f4dfc3e`](https://github.com/Adisoreq/FormuLang/tree/f4dfc3e); backward compatible with `core-1.0` - `core-1.2` and `stock-1.0` - `stock-1.2`). Formulas whose result is a value in `1.2` give the same value; only formulas whose result was an Error can give a value now (also inside `IFERR` and `ISERR`). The choices that the standard leaves open are the same as in FormuLang-TS 1.3.0 ([Conformance](docs/conformance.md#implementation-choices), I33 - I36).
+
+### Added
+
+- `core-1.3` missing values: `<`, `<=`, `>`, `>=` (`LES`, `LEQ`, `GRE`, `GEQ`) with `null` on either side are `false`; `+`, `-`, `*`, `/`, unary `-` (`ADD`, `SUB`, `MUL`, `DIV`, `NEG`) and `ABS` with `null` are `null` (`null / 0` too); a key of `null` (`null.close`, `GET(null, key)`) is `null`. `==` and `!=` do not change, and `NOT(null)`, `IF(null, a, b)` and `null && true` are still an `ARGUMENT_ERROR`.
+- `core-1.3` `GET(array, index, fallback)` and `GET(object, key, fallback)`; the operator `array[index]` still gives `INVALID_INDEX_ERROR`.
+- `core-1.3` functions that return a copy and never change their arguments: `APPEND`, `INSERT`, `PUT` and `REMOVE` (of arrays and of objects), `VALUES`, `ENTRIES`, `FROM_ENTRIES`, `CONCAT(array1, array2)` and `MERGE` of more than two objects.
+- `stock-1.3` `SIGNAL_SCORE(buy, sell, weights?)`: `SCORE(buy) - SCORE(sell)` from `-1` to `1`, of Objects or Arrays, with one Object of weights for the keys of both sides (`SeriesFunctions.SignalScore`, `SeriesFunctions.SignalScoreName`).
+- Argument templates that also accept `null` (`Number, Null` of the standard): `ArgumentTemplate.Nullable` (the `nullable` parameter of `ArgumentTemplate.Of` and `ArgumentTemplate.ArrayOf`) and `IArgumentTemplate.Nullable` (a default interface member, `false`, so existing implementations still compile); `ToString()` gives `<Number | Null>` and `<Array<Number | Null>>`.
+- WebPreview: the examples _Missing values_ (Default Context) and _Buy and sell conditions_ (Strategy Context, `SIGNAL_SCORE` without warm-up checks).
+- Tests of the `1.3` examples of the standard that the JSON conformance tests do not cover (`Core13Tests`, `Stock13Tests`).
+
+### Changed
+
+- `core-1.3`: `MIN`, `MAX`, `SUM` and `AVG` of an array with a `null` element are `null` (not skipped), also with a handler of `MIN` / `MAX` that returns `null`; `MIN([])` and `MAX([])` are `null` instead of an `OPERATION_ERROR`. `AVG([])` is still an `OPERATION_ERROR`.
+- `stock-1.3`: `SCORE` accepts `null` conditions, counted as conditions that are not met (`SCORE([true, null])` is `0.5`).
+- The version of the standards is `core-1.3` and `stock-1.3`; `STANDARDS` is `["core-1.0", "core-1.1", "core-1.2", "core-1.3"]` (and `"stock-1.0"` - `"stock-1.3"`). `RegisterStock` requires `core-1.3+`; `CoreStandard.CompatibleIdentifiers` and `StockStandard.CompatibleIdentifiers` list the `1.2` versions too.
+- The conformance tests are synced with `Adisoreq/FormuLang@f4dfc3e` (`core13.json`, `stock13.json`): all 436 cases pass, except the known deviation D4.
+
+## [1.2.0] - 2026-11-27
 
 **Supported standards:** `core-1.2`, `stock-1.2` ([`Adisoreq/FormuLang@1e7b2a6`](https://github.com/Adisoreq/FormuLang/tree/1e7b2a6); backward compatible with `core-1.0`, `core-1.1`, `stock-1.0` and `stock-1.1`), and the formula models of the standard. The choices that the standard leaves open are the same as in FormuLang-TS 1.2.0 ([Conformance](docs/conformance.md#implementation-choices), I25 - I32).
 

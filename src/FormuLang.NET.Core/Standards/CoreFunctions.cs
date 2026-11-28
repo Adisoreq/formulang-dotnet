@@ -23,12 +23,13 @@ namespace FormuLang.NET.Core.Standards
             // 1. Arithmetic
             Fn("ADD",
                 Overload((a, _) => N(Num(a[0]) + Num(a[1])), NumberArg("a"), NumberArg("b")),
-                Overload((a, _) => T(Txt(a[0]) + Txt(a[1])), TextArg("text1"), TextArg("text2"))),
-            Fn("SUB", Overload((a, _) => N(Num(a[0]) - Num(a[1])), NumberArg("a"), NumberArg("b"))),
-            Fn("MUL", Overload((a, _) => N(Num(a[0]) * Num(a[1])), NumberArg("a"), NumberArg("b"))),
+                Overload((a, _) => T(Txt(a[0]) + Txt(a[1])), TextArg("text1"), TextArg("text2")),
+                MissingBinary()),
+            Fn("SUB", Overload((a, _) => N(Num(a[0]) - Num(a[1])), NumberArg("a"), NumberArg("b")), MissingBinary()),
+            Fn("MUL", Overload((a, _) => N(Num(a[0]) * Num(a[1])), NumberArg("a"), NumberArg("b")), MissingBinary()),
             Fn("DIV", Overload((a, _) => Num(a[1]) == 0
                 ? OperationError("Division by zero.")
-                : N(Num(a[0]) / Num(a[1])), NumberArg("a"), NumberArg("b"))),
+                : N(Num(a[0]) / Num(a[1])), NumberArg("a"), NumberArg("b")), MissingBinary()),
             Fn("MOD", Overload((a, _) => Num(a[1]) == 0
                 ? OperationError("Division by zero.")
                 : N(Num(a[0]) % Num(a[1])), NumberArg("a"), NumberArg("b"))),
@@ -42,8 +43,8 @@ namespace FormuLang.NET.Core.Standards
             Fn("LN", Overload((a, _) => Num(a[0]) <= 0
                 ? OperationError("Logarithm of a number that is not greater than 0.")
                 : N(Math.Log(Num(a[0]))), NumberArg("value"))),
-            Fn("ABS", Overload((a, _) => N(Math.Abs(Num(a[0]))), NumberArg("num"))),
-            Fn("NEG", Overload((a, _) => N(0 - Num(a[0])), NumberArg("num"))),
+            Fn("ABS", Overload((a, _) => N(Math.Abs(Num(a[0]))), NumberArg("num")), MissingUnary()),
+            Fn("NEG", Overload((a, _) => N(0 - Num(a[0])), NumberArg("num")), MissingUnary()),
             Fn("CEIL", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Ceiling, Math.Ceiling), NumberArg("number"), PrecisionArg())),
             Fn("FLOOR", Overload((a, _) => Round(Num(a[0]), Precision(a), Math.Floor, Math.Floor), NumberArg("number"), PrecisionArg())),
             Fn("ROUND", Overload((a, _) => Round(Num(a[0]), Precision(a),
@@ -63,17 +64,20 @@ namespace FormuLang.NET.Core.Standards
             Fn("NOT", Overload((a, _) => B(!Bool(a[0])), BooleanArg("val"))),
             Fn("EQU", Overload((a, _) => B(ValuesEqual(a[0], a[1])), AnyArg("a"), AnyArg("b"))),
             Fn("NEQ", Overload((a, _) => B(!ValuesEqual(a[0], a[1])), AnyArg("a"), AnyArg("b"))),
-            Fn("GRE", Overload((a, _) => B(Num(a[0]) > Num(a[1])), NumberArg("a"), NumberArg("b"))),
-            Fn("LES", Overload((a, _) => B(Num(a[0]) < Num(a[1])), NumberArg("a"), NumberArg("b"))),
-            Fn("GEQ", Overload((a, _) => B(Num(a[0]) >= Num(a[1])), NumberArg("a"), NumberArg("b"))),
-            Fn("LEQ", Overload((a, _) => B(Num(a[0]) <= Num(a[1])), NumberArg("a"), NumberArg("b"))),
+            Comparison("GRE", (x, y) => x > y),
+            Comparison("LES", (x, y) => x < y),
+            Comparison("GEQ", (x, y) => x >= y),
+            Comparison("LEQ", (x, y) => x <= y),
 
             // 3. Control flow
             Fn("IF", Overload((a, _) => Bool(a[0]) ? a[1] : a[2], BooleanArg("condition"), AnyArg("then"), AnyArg("else"))),
             Fn("ERROR", Overload((a, _) => ErrorValue(Errors.CustomError(Txt(a[0]))), TextArg("message"))),
 
             // 4. Text
-            Fn("CONCAT", Overload((a, _) => T(Txt(a[0]) + Txt(a[1])), TextArg("text1"), TextArg("text2"))),
+            Fn("CONCAT",
+                Overload((a, _) => T(Txt(a[0]) + Txt(a[1])), TextArg("text1"), TextArg("text2")),
+                // core-1.3: two arrays; the elements are not copied deeply
+                Overload((a, _) => A(Arr(a[0]).Concat(Arr(a[1]))), ArrayArg("array1"), ArrayArg("array2"))),
             Fn("TRIM", Overload((a, _) => T(Txt(a[0]).Trim(' ', '\t', '\n', '\r')), TextArg("text"))),
             Fn("UPPERCASE", Overload((a, _) => T(Txt(a[0]).ToUpperInvariant()), TextArg("text"))),
             Fn("LOWERCASE", Overload((a, _) => T(Txt(a[0]).ToLowerInvariant()), TextArg("text"))),
@@ -103,12 +107,18 @@ namespace FormuLang.NET.Core.Standards
             Fn("GET",
                 Overload((a, c) => TryResolveIndex(Num(a[1]), Arr(a[0]).Length, c, out int i, out var error) ? Arr(a[0])[i] : error!,
                     ArrayArg("array"), NumberArg("index")),
-                Overload((a, _) => GetKey(Obj(a[0]), Txt(a[1])), ObjectArg("object"), TextArg("key"))),
-            Fn("SUM", Overload((a, _) => N(Arr(a[0]).Sum(Num)), NumberArrayArg("array"))),
+                Overload((a, _) => GetKey(Obj(a[0]), Txt(a[1])), ObjectArg("object"), TextArg("key")),
+                // core-1.3: a key of null is null, and a fallback for a missing index or key
+                Overload((_, _) => Null(), NullArg("object"), TextArg("key")),
+                Overload((a, c) => GetOrFallback(Arr(a[0]), Num(a[1]), a[2], c), ArrayArg("array"), NumberArg("index"), AnyArg("fallback")),
+                Overload((a, _) => Obj(a[0]).HasKey(Txt(a[1])) ? GetKey(Obj(a[0]), Txt(a[1])) : a[2],
+                    ObjectArg("object"), TextArg("key"), AnyArg("fallback"))),
+            // core-1.3: an array with a null element gives null ("Missing values")
+            Fn("SUM", Overload((a, _) => Arr(a[0]).Any(IsNull) ? Null() : N(Arr(a[0]).Sum(Num)), NullableNumberArrayArg("array"))),
             Fn("PROD", Overload((a, _) => N(Arr(a[0]).Aggregate(1.0, (p, e) => p * Num(e))), NumberArrayArg("array"))),
             Fn("AVG", Overload((a, _) => Arr(a[0]).Length == 0
                 ? OperationError("The array is empty.")
-                : N(Arr(a[0]).Average(Num)), NumberArrayArg("array"))),
+                : Arr(a[0]).Any(IsNull) ? Null() : N(Arr(a[0]).Average(Num)), NullableNumberArrayArg("array"))),
             Fn("LEN",
                 Overload((a, _) => N(Arr(a[0]).Length), ArrayArg("array")),
                 Overload((a, _) => N(StringUtils.CodePointLength(Txt(a[0]))), TextArg("text"))),
@@ -187,12 +197,25 @@ namespace FormuLang.NET.Core.Standards
             // 11. Added in core-1.1
             .. Core11Functions(),
             .. Core12Functions(),
+            .. Core13Functions(),
 
             // Target of the object literal translation: { k1: a, "k2": b } is OBJECT("k1",a,"k2",b)
             Fn("OBJECT", Overload((a, _) => CreateObject(a), ArgumentTemplate.Any("entries", optional: true, multiple: true))),
         ];
 
         // Arithmetic
+
+        /// <summary>
+        /// core-1.3, "Missing values": <c>ADD</c>, <c>SUB</c>, <c>MUL</c>, <c>DIV</c> with <c>null</c> on either side give
+        /// <c>null</c> (<c>null / 0</c> too). The overload follows the one of numbers, so it matches only when an
+        /// argument is <c>null</c>.
+        /// </summary>
+        private static FunctionOverload MissingBinary() => Overload((_, _) => Null(), NullableNumberArg("a"), NullableNumberArg("b"));
+
+        /// <summary>
+        /// core-1.3, "Missing values": <c>NEG</c> and <c>ABS</c> of <c>null</c> give <c>null</c>.
+        /// </summary>
+        private static FunctionOverload MissingUnary() => Overload((_, _) => Null(), NullArg("num"));
 
         /// <summary>
         /// The optional <c>precision</c> of the rounding functions (core-1.1): <c>0</c> when it is omitted.
@@ -292,6 +315,15 @@ namespace FormuLang.NET.Core.Standards
         }
 
         // Comparison
+
+        /// <summary>
+        /// <c>GRE</c>, <c>LES</c>, <c>GEQ</c>, <c>LEQ</c> of two numbers; since core-1.3 ("Missing values") a comparison
+        /// with <c>null</c> on either side is <c>false</c> (the second overload).
+        /// </summary>
+        private static Function Comparison(string name, Func<double, double, bool> operation)
+            => Fn(name,
+                Overload((a, _) => B(operation(Num(a[0]), Num(a[1]))), NumberArg("a"), NumberArg("b")),
+                Overload((_, _) => B(false), NullableNumberArg("a"), NullableNumberArg("b")));
 
         /// <summary>
         /// docs/standards/core/functions/EQU.md
@@ -420,6 +452,20 @@ namespace FormuLang.NET.Core.Standards
                 return Value.Error(Errors.InvalidKeyError($"Key \"{key}\" does not exist."), "");
 
             return obj.GetProperty(key).GetValue();
+        }
+
+        /// <summary>
+        /// <c>GET(array, index, fallback)</c> (core-1.3): <c>fallback</c> for an index without an element, the
+        /// <c>INVALID_INDEX_ERROR</c> for an index that is not whole.
+        /// </summary>
+        private static IValue GetOrFallback(IValue[] array, double index, IValue fallback, IContext context)
+        {
+            double zeroBased = index - ArrayIndexing(context);
+
+            if (!IsWhole(zeroBased))
+                return InvalidIndexError($"Index {StringConverter.NumberToString(index)} is not a valid index of the array.");
+
+            return zeroBased >= 0 && zeroBased < array.Length ? array[(int)zeroBased] : fallback;
         }
 
         private static IValue Range(IValue[] array, double first, double last, IContext context)
@@ -603,7 +649,9 @@ namespace FormuLang.NET.Core.Standards
         }
 
         /// <summary>
-        /// MAX and MIN: (a, b), (...numbers), (numbers &lt;Array&lt;Number&gt;&gt;), (elements &lt;Array&gt;, handler &lt;Delegate&gt;).
+        /// MAX and MIN: (a, b), (...numbers), (numbers &lt;Array&lt;Number | Null&gt;&gt;), (elements &lt;Array&gt;, handler &lt;Delegate&gt;).
+        /// Since core-1.3 ("Missing values") an empty array, a <c>null</c> element or a <c>null</c> result of the handler
+        /// gives <c>null</c>.
         /// </summary>
         /// <param name="better">Returns true if the first number should be kept.</param>
         private static Function Extreme(string name, Func<double, double, bool> better)
@@ -613,9 +661,9 @@ namespace FormuLang.NET.Core.Standards
             return Fn(name,
                 Overload((a, _) => N(Pick([Num(a[0]), Num(a[1])])), NumberArg("a"), NumberArg("b")),
                 Overload((a, _) => N(Pick(a.Select(Num))), ArgumentTemplate.Of("numbers", Types.Number, multiple: true)),
-                Overload((a, _) => Arr(a[0]).Length == 0
-                    ? OperationError("The array is empty.")
-                    : N(Pick(Arr(a[0]).Select(Num))), NumberArrayArg("numbers")),
+                Overload((a, _) => Arr(a[0]).Length == 0 || Arr(a[0]).Any(IsNull)
+                    ? Null()
+                    : N(Pick(Arr(a[0]).Select(Num))), NullableNumberArrayArg("numbers")),
                 Overload((a, c) =>
                 {
                     IValue[] elements = Arr(a[0]);
@@ -624,10 +672,10 @@ namespace FormuLang.NET.Core.Standards
                     if (CheckHandler(handler, name) is IValue error)
                         return error;
 
-                    if (elements.Length == 0)
-                        return OperationError("The array is empty.");
-
                     var numbers = new List<double>(elements.Length);
+
+                    // Every element is computed, so an Error or a wrong result after a null result is still reported
+                    bool missing = false;
 
                     foreach (IValue element in elements)
                     {
@@ -635,13 +683,19 @@ namespace FormuLang.NET.Core.Standards
                         if (IsError(result))
                             return result;
 
+                        if (IsNull(result))
+                        {
+                            missing = true;
+                            continue;
+                        }
+
                         if (result.Raw is not double number)
                             return OperationError($"The handler passed to \"{name}\" must return a Number.");
 
                         numbers.Add(number);
                     }
 
-                    return N(Pick(numbers));
+                    return missing || numbers.Count == 0 ? Null() : N(Pick(numbers));
                 }, ArrayArg("elements"), DelegateArg("handler")));
         }
 

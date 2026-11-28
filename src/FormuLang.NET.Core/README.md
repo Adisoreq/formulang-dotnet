@@ -1,6 +1,6 @@
 # FormuLang.NET.Core
 
-.NET implementation of the [**FormuLang**](https://github.com/Adisoreq/FormuLang) formula language, **Core** standard `core-1.2`.
+.NET implementation of the [**FormuLang**](https://github.com/Adisoreq/FormuLang) formula language, **Core** standard `core-1.3`.
 
 A host application embeds the interpreter and lets its users write text formulas:
 
@@ -28,7 +28,7 @@ Console.WriteLine(result.Successful ? result.ToString() : result.Error.ToString(
 
 ## Features
 
-- Every function, procedure, error and operator of `core-1.2`, including delegate calls (`$f(x)`), the memory of the Iteration and Time Contexts (`STORE`, `RECALL`, `CLEAR`, `HISTORY`) and the short circuit of `AND` / `OR`: arithmetic, logic, text (Unicode code points), arrays, lambdas, objects, trigonometry, `FORMAT` and the time functions (`DATE`, `FORMAT_TIME`, `YEAR` ... `MILLISECOND`).
+- Every function, procedure, error and operator of `core-1.3`, including delegate calls (`$f(x)`), the memory of the Iteration and Time Contexts (`STORE`, `RECALL`, `CLEAR`, `HISTORY`), the short circuit of `AND` / `OR`, the missing values (`null > 1` is `false`, `null + 1` is `null`) and the array and object functions that return a copy (`APPEND`, `INSERT`, `PUT`, `REMOVE`, `VALUES`, `ENTRIES`, `FROM_ENTRIES`, `GET` with a fallback): arithmetic, logic, text (Unicode code points), arrays, lambdas, objects, trigonometry, `FORMAT` and the time functions (`DATE`, `FORMAT_TIME`, `YEAR` ... `MILLISECOND`).
 - Line comments `#` and scoped comments `<# ... #>`.
 - Context types: **Default Context** (`Context`), **Iteration Context** (`IterationContext`, `Executor.ExecuteIterations`) and **Time Context** (`TimeContext`, `Executor.CreateFrameRunner` for animations and simulations).
 - `NOW` read once per execution from a `TimeProvider` (or pinned with `Environment.SetNow`), `@time_offset` for local time.
